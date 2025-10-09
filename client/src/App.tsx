@@ -75,6 +75,16 @@ function App() {
     }
   };
 
+  // Added clear handler
+  const handleClear = () => {
+    // prevent clearing while processing to avoid confusing state
+    if (isProcessing) return;
+    setText("");
+    setCorrectedParas([]);
+    setProgressPercent(0);
+    setTotalParagraphs(0);
+  };
+
   var correctedText = correctedParas.filter(Boolean).join("\n\n");
 
   return (
@@ -102,9 +112,19 @@ function App() {
         style={{ width: "100%", padding: "1rem" }}
       />
 
-      <button onClick={handleSubmit} disabled={isProcessing}>
-        {isProcessing ? "Processing..." : "Fix Grammar"}
-      </button>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <button onClick={handleSubmit} disabled={isProcessing}>
+          {isProcessing ? "Processing..." : "Fix Grammar"}
+        </button>
+        <button
+          onClick={handleClear}
+          disabled={isProcessing}
+          style={{ marginLeft: 12 }}
+          aria-label="Clear text and results"
+        >
+          Clear
+        </button>
+      </div>
 
       {isProcessing && (
         <div style={{ marginTop: "1rem" }}>
