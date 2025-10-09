@@ -4,82 +4,141 @@ import InlineDiff from "./InlineDiff";
 
 function App() {
   const [text, setText] = useState("");
-  const [correctedText, setCorrectedText] = useState("");
-  const [isProcessing, setIsProcessing] = useState(false);
   const [model, setModel] = useState("gemma3");
+
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [progressPercent, setProgressPercent] = useState(0);
+  const [totalParagraphs, setTotalParagraphs] = useState(0);
+
+  // NEW: store paragraphs as they get corrected
+  const [correctedParas, setCorrectedParas] = useState<string[]>([]);
 
   const handleSubmit = async () => {
     setIsProcessing(true);
-    setCorrectedText("");
+    setCorrectedParas([]);
+    setProgressPercent(0);
+    setTotalParagraphs(0);
+
+    const paragraphs = text.split(/\n\s*\n+/).filter(Boolean);
+    setTotalParagraphs(paragraphs.length);
 
     try {
-      const res = await fetch("http://localhost:3001/api/fix", {
+      const res = await fetch("http://localhost:3001/api/fix-stream", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text, model }),
       });
 
-      const data: { original: string; corrected: string } = await res.json();
-      setCorrectedText(data.corrected);
+      if (!res.body) throw new Error("No response body");
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let processed = 0;
+      let partials: string[] = new Array(paragraphs.length).fill("");
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        let lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+
+        for (const line of lines) {
+          if (!line.trim()) continue;
+
+          try {
+            const obj = JSON.parse(line);
+            if (obj.error) continue;
+
+            const { index, corrected } = obj;
+            partials[index] = corrected;
+
+            processed += 1;
+
+            // ✅ update UI states progressively
+            setCorrectedParas([...partials]);
+            correctedText = partials.filter(Boolean).join("\n\n");
+            setProgressPercent(Math.round((processed / totalParagraphs) * 100));
+          } catch (err) {
+            console.error("Parse error:", err);
+          }
+        }
+      }
+
+      setProgressPercent(100);
     } catch (err) {
       console.error(err);
-      setCorrectedText("(error)");
     } finally {
       setIsProcessing(false);
     }
   };
 
+  var correctedText = correctedParas.filter(Boolean).join("\n\n");
+
   return (
-    <div
-      id="root"
-      style={{ textAlign: "left", maxWidth: "900px", margin: "2rem auto" }}
-    >
+    <div style={{ maxWidth: "1200px", margin: "2rem auto", textAlign: "left" }}>
       <h1 style={{ textAlign: "center" }}>Grammar Fixer (Ollama)</h1>
 
-      <div className="card" style={{ width: "100%" }}>
-        <div style={{ marginBottom: "1rem" }}>
-          <select
-            value={model}
-            onChange={(e) => setModel(e.target.value)}
-            style={{ width: "200px" }}
-          >
-            <option value="gemma3">Gemma 3 4B</option>
-            <option value="deepseek-r1">DeepSeek-R1 7B</option>
-            <option value="llama3.2">Llama 3.2 3B</option>
-            <option value="mistral">Mistral 7B</option>
-            <option value="phi4-mini">Phi 4 Mini</option>
-          </select>
-        </div>
+      <select
+        value={model}
+        onChange={(e) => setModel(e.target.value)}
+        style={{ marginBottom: "1rem", width: "200px" }}
+      >
+        <option value="gemma3">Gemma 3 4B</option>
+        <option value="deepseek-llm">DeepSeek 7B</option>
+        <option value="deepseek-v3.1:671b-cloud">DeepSeek 3.1 671B (Cloud)</option>
+        <option value="llama3.2">Llama 3.2 3B</option>
+        <option value="mistral">Mistral 7B</option>
+        <option value="phi4-mini">Phi 4 Mini 3.8B</option>
+      </select>
 
-        <textarea
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          placeholder="Paste your chapter here..."
-          rows={15}
-          style={{
-            width: "100%",
-            minHeight: "300px",
-            fontFamily: "inherit",
-            fontSize: "1em",
-            padding: "1rem",
-          }}
-        />
+      <textarea
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        placeholder="Paste your text..."
+        rows={15}
+        style={{ width: "100%", padding: "1rem" }}
+      />
 
+      <button onClick={handleSubmit} disabled={isProcessing}>
+        {isProcessing ? "Processing..." : "Fix Grammar"}
+      </button>
+
+      {isProcessing && (
         <div style={{ marginTop: "1rem" }}>
-          <button onClick={handleSubmit} disabled={isProcessing}>
-            {isProcessing ? "Processing..." : "Fix Grammar"}
-          </button>
+          Progress: {progressPercent}% ({correctedParas.filter(Boolean).length}/
+          {totalParagraphs})
+          <div
+            style={{
+              height: 8,
+              background: "#eee",
+              borderRadius: 4,
+              marginTop: 4,
+            }}
+          >
+            <div
+              style={{
+                height: "100%",
+                width: `${progressPercent}%`,
+                background: "#3b82f6",
+                borderRadius: 4,
+              }}
+            />
+          </div>
         </div>
-
-        {isProcessing && (
-          <div style={{ marginTop: "1rem" }}>Processing...</div>
-        )}
-      </div>
+      )}
 
       {correctedText && (
         <div style={{ marginTop: "2rem" }}>
-          <h2>Differences</h2>
-          <InlineDiff oldValue={text} newValue={correctedText} leftTitle="Original" rightTitle="Corrected" />
+          <h2>Diff View</h2>
+          <InlineDiff
+            oldValue={text}
+            newValue={correctedText}
+            leftTitle="Original"
+            rightTitle="Corrected"
+          />
         </div>
       )}
     </div>

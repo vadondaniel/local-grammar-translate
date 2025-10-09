@@ -8,37 +8,55 @@ app.use(express.json());
 
 const DEFAULT_MODEL = "gemma3";
 
-const { diffLines } = require("diff");
-
-app.post("/api/fix", (req, res) => {
+app.post("/api/fix-stream", async (req, res) => {
   const { text, model } = req.body;
   const usedModel = model || DEFAULT_MODEL;
-
   if (!text) return res.status(400).json({ error: "No text provided." });
 
-  const prompt = `
-Correct the grammar of the following text.
+  const paragraphs = text.split(/\n\s*\n+/).filter(Boolean);
+
+  res.setHeader("Content-Type", "application/x-ndjson; charset=utf-8");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+  res.flushHeaders?.();
+
+  try {
+    for (let i = 0; i < paragraphs.length; i++) {
+      const para = paragraphs[i].trim();
+      if (!para) continue;
+
+      const prompt = `
+Correct the grammar of the following paragraph.
 - Keep the original meaning and style.
 - Do NOT include explanations, commentary, or extra text.
 - Only output the corrected text.
 
-Text:
-${text}
+Paragraph:
+${para}
 `.trim();
 
-  try {
-    const corrected = execSync(`ollama run ${usedModel}`, {
-      input: prompt,
-      encoding: "utf-8",
-      stdio: ['pipe', 'pipe', 'pipe']
-    }).trim();
+      let corrected = "";
+      try {
+        corrected = execSync(`ollama run ${usedModel}`, {
+          input: prompt,
+          encoding: "utf-8",
+          stdio: ["pipe", "pipe", "pipe"],
+        }).trim();
+      } catch (err) {
+        corrected = "(error)";
+      }
 
-    const diff = diffLines(text, corrected); // generate diff
+      res.write(JSON.stringify({ index: i, original: para, corrected }) + "\n");
+      if (res.flush) res.flush();
 
-    res.json({ original: text, corrected, diff });
+      // Give the TCP stream a short breather
+      await new Promise((r) => setTimeout(r, 50));
+    }
   } catch (err) {
-    console.error(err);
-    res.json({ original: text, corrected: "(error)", diff: [] });
+    console.error("Streaming error:", err);
+    res.write(JSON.stringify({ error: "stream_error" }) + "\n");
+  } finally {
+    res.end();
   }
 });
 
