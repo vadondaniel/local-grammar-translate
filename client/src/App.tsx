@@ -20,7 +20,8 @@ function App() {
     setTotalParagraphs(0);
 
     const paragraphs = text.split(/\n\s*\n+/).filter(Boolean);
-    setTotalParagraphs(paragraphs.length);
+    const total = paragraphs.length; // use local total to avoid stale state / zero division
+    setTotalParagraphs(total);
 
     try {
       const res = await fetch("http://localhost:3001/api/fix-stream", {
@@ -35,7 +36,7 @@ function App() {
       const decoder = new TextDecoder();
       let buffer = "";
       let processed = 0;
-      let partials: string[] = new Array(paragraphs.length).fill("");
+      let partials: string[] = new Array(total).fill("");
 
       while (true) {
         const { done, value } = await reader.read();
@@ -53,14 +54,21 @@ function App() {
             if (obj.error) continue;
 
             const { index, corrected } = obj;
-            partials[index] = corrected;
+            const wasEmpty = !partials[index];
+            partials[index] = corrected || "";
 
-            processed += 1;
+            if (wasEmpty && partials[index]) {
+              processed += 1;
+            }
 
-            // ✅ update UI states progressively
+            // update UI progressively
             setCorrectedParas([...partials]);
-            correctedText = partials.filter(Boolean).join("\n\n");
-            setProgressPercent(Math.round((processed / totalParagraphs) * 100));
+
+            if (total > 0) {
+              setProgressPercent(Math.round((processed / total) * 100));
+            } else {
+              setProgressPercent((prev) => Math.min(99, prev + 10));
+            }
           } catch (err) {
             console.error("Parse error:", err);
           }
