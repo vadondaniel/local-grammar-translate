@@ -26,7 +26,7 @@ app.post("/api/fix-stream", async (req, res) => {
       if (!para) continue;
 
       const prompt = `
-Correct the grammar of the following paragraph.
+Correct the grammar of the following paragraph, if necessary.
 - Keep the original meaning and style.
 - Do NOT include explanations, commentary, or extra text.
 - Only output the corrected text.
