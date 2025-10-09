@@ -96,29 +96,31 @@ function App() {
   var correctedText = correctedParas.filter(Boolean).join("\n\n");
 
   return (
-    <div style={{ maxWidth: "1200px", margin: "2rem auto", textAlign: "left" }}>
+    <div style={{ maxWidth: "1280px", margin: "2rem auto", textAlign: "left" }}>
       <h1 style={{ textAlign: "center" }}>Grammar Fixer (Ollama)</h1>
 
       <select
         value={model}
         onChange={(e) => setModel(e.target.value)}
-        style={{ marginBottom: "1rem", width: "200px" }}
+        style={{ marginBottom: "1rem", width: "155px" }}
       >
         <option value="gemma3">Gemma 3 4B</option>
         <option value="deepseek-llm">DeepSeek 7B</option>
-        <option value="deepseek-v3.1:671b-cloud">DeepSeek 3.1 671B (Cloud)</option>
+        <option value="deepseek-v3.1:671b-cloud">DeepSeek 671B (Cloud)</option>
         <option value="llama3.2">Llama 3.2 3B</option>
         <option value="mistral">Mistral 7B</option>
         <option value="phi4-mini">Phi 4 Mini 3.8B</option>
       </select>
 
-      <textarea
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-        placeholder="Paste your text..."
-        rows={15}
-        style={{ width: "100%", padding: "1rem" }}
-      />
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <textarea
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          placeholder="Paste your text..."
+          rows={15}
+          style={{ width: "100%", padding: "1rem", margin: "auto auto 1em auto" }}
+        />
+      </div>
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <button onClick={handleSubmit} disabled={isProcessing}>
@@ -135,24 +137,12 @@ function App() {
       </div>
 
       {isProcessing && (
-        <div style={{ marginTop: "1rem" }}>
-          Progress: {progressPercent}% ({correctedParas.filter(Boolean).length}/
-          {totalParagraphs})
-          <div
-            style={{
-              height: 8,
-              background: "#eee",
-              borderRadius: 4,
-              marginTop: 4,
-            }}
-          >
+        <div className="progress-container">
+          Progress: {progressPercent}% ({correctedParas.filter(Boolean).length}/{totalParagraphs})
+          <div className="progress-bar-bg">
             <div
-              style={{
-                height: "100%",
-                width: `${progressPercent}%`,
-                background: "#3b82f6",
-                borderRadius: 4,
-              }}
+              className="progress-bar-fill"
+              style={{ width: `${progressPercent}%` }}
             />
           </div>
         </div>
@@ -160,7 +150,7 @@ function App() {
 
       {correctedText && (
         <div style={{ marginTop: "2rem" }}>
-          <h2>Diff View</h2>
+          <h2>Difference View</h2>
           <InlineDiff
             oldValue={text}
             newValue={correctedText}

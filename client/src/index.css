@@ -84,19 +84,3 @@ select:focus {
   outline: none;
   border-color: #646cff;
 }
-
-/* Diff cards */
-.diff-card {
-  background-color: #1f1f1f;
-  padding: 1.5em;
-  border-radius: 12px;
-  margin-bottom: 1.5em;
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
-}
-
-/* DiffViewer styling overrides */
-.diff-viewer {
-  background-color: transparent;
-  font-family: inherit;
-  font-size: 0.95em;
-}
