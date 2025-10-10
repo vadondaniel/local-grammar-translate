@@ -105,11 +105,12 @@ function App() {
         style={{ marginBottom: "1rem", width: "155px" }}
       >
         <option value="gemma3">Gemma 3 4B</option>
-        <option value="deepseek-llm">DeepSeek 7B</option>
         <option value="deepseek-v3.1:671b-cloud">DeepSeek 671B (Cloud)</option>
+        <option value="gpt-oss:120b-cloud">GPT-OSS 120B (Cloud)</option>
         <option value="llama3.2">Llama 3.2 3B</option>
+        <option value="deepseek-llm">DeepSeek 7B</option>
         <option value="mistral">Mistral 7B</option>
-        <option value="phi4-mini">Phi 4 Mini 3.8B</option>
+        <option value="thinkverse/towerinstruct:latest">TowerInstruct 7B</option>
       </select>
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
