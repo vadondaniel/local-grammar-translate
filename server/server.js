@@ -37,7 +37,7 @@ ${para}
 
       let corrected = "";
       try {
-        corrected = execSync(`ollama run ${usedModel}`, {
+        corrected = execSync(`ollama run ${usedModel} --hidethinking`, {
           input: prompt,
           encoding: "utf-8",
           stdio: ["pipe", "pipe", "pipe"],
