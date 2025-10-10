@@ -19,7 +19,7 @@ function App() {
     setTotalParagraphs(0);
 
     const paragraphs = text.split(/\n\s*\n+/).filter(Boolean);
-    const total = paragraphs.length; // use local total to avoid stale state / zero division
+    const total = paragraphs.length;
     setTotalParagraphs(total);
 
     try {
