@@ -43,6 +43,8 @@ button {
   font-size: 1rem;
   border-radius: 8px;
   border: 1px solid #d1d5db;
+  background: #f9fafb;
+  color: #1f2937;
   transition: all 0.2s ease;
 }
 
