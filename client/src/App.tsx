@@ -10,7 +10,6 @@ function App() {
   const [progressPercent, setProgressPercent] = useState(0);
   const [totalParagraphs, setTotalParagraphs] = useState(0);
 
-  // NEW: store paragraphs as they get corrected
   const [correctedParas, setCorrectedParas] = useState<string[]>([]);
 
   const handleSubmit = async () => {
@@ -83,9 +82,7 @@ function App() {
     }
   };
 
-  // Added clear handler
   const handleClear = () => {
-    // prevent clearing while processing to avoid confusing state
     if (isProcessing) return;
     setText("");
     setCorrectedParas([]);
