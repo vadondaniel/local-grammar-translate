@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import "./App.css";
 import InlineDiff from "./InlineDiff";
+import Settings from "./Settings";
 
 function App() {
   const [text, setText] = useState("");
@@ -15,6 +16,7 @@ function App() {
   const [correctedParas, setCorrectedParas] = useState<string[]>([]);
   const [copied, setCopied] = useState(false);
   const copyTimerRef = useRef<number | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   const handleSubmit = async () => {
     setIsProcessing(true);
@@ -175,19 +177,39 @@ function App() {
     <div style={{ maxWidth: "1280px", margin: "2rem auto", textAlign: "left" }}>
       <h1 style={{ textAlign: "center" }}>Grammar Fixer (Ollama)</h1>
 
-      <select
-        value={model}
-        onChange={(e) => setModel(e.target.value)}
-        style={{ marginBottom: "1rem", width: "155px" }}
-      >
-        <option value="gemma3">Gemma 3 4B</option>
-        <option value="deepseek-v3.1:671b-cloud">DeepSeek 671B (Cloud)</option>
-        <option value="gpt-oss:120b-cloud">GPT-OSS 120B (Cloud)</option>
-        <option value="llama3.2">Llama 3.2 3B</option>
-        <option value="deepseek-llm">DeepSeek 7B</option>
-        <option value="mistral">Mistral 7B</option>
-        <option value="thinkverse/towerinstruct:latest">TowerInstruct 7B</option>
-      </select>
+      <div className="toolbar">
+        <select
+          value={model}
+          onChange={(e) => setModel(e.target.value)}
+          style={{ width: "155px" }}
+        >
+          <option value="gemma3">Gemma 3 4B</option>
+          <option value="deepseek-v3.1:671b-cloud">DeepSeek 671B (Cloud)</option>
+          <option value="gpt-oss:120b-cloud">GPT-OSS 120B (Cloud)</option>
+          <option value="llama3.2">Llama 3.2 3B</option>
+          <option value="deepseek-llm">DeepSeek 7B</option>
+          <option value="mistral">Mistral 7B</option>
+          <option value="thinkverse/towerinstruct:latest">TowerInstruct 7B</option>
+        </select>
+
+        <button
+          className="btn-secondary btn-icon"
+          onClick={() => setSettingsOpen((v) => !v)}
+          title="Settings"
+          aria-label="Open settings"
+        >
+          ⚙️
+        </button>
+
+      <Settings
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        onSaved={() => {
+          // force a health refresh quickly after saving
+          setServerReady(false);
+        }}
+      />
+      </div>
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <textarea
