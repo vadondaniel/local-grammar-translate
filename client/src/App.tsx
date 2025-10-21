@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import "./App.css";
 import InlineDiff from "./InlineDiff";
 
@@ -11,6 +11,8 @@ function App() {
   const [totalParagraphs, setTotalParagraphs] = useState(0);
 
   const [correctedParas, setCorrectedParas] = useState<string[]>([]);
+  const [copied, setCopied] = useState(false);
+  const copyTimerRef = useRef<number | null>(null);
 
   const handleSubmit = async () => {
     setIsProcessing(true);
@@ -90,7 +92,39 @@ function App() {
     setTotalParagraphs(0);
   };
 
-  var correctedText = correctedParas.filter(Boolean).join("\n\n");
+  const correctedText = correctedParas.filter(Boolean).join("\n\n");
+
+  const handleCopy = async () => {
+    if (!correctedText) return;
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(correctedText);
+      } else {
+        const ta = document.createElement("textarea");
+        ta.value = correctedText;
+        ta.style.position = "fixed";
+        ta.style.opacity = "0";
+        document.body.appendChild(ta);
+        ta.focus();
+        ta.select();
+        document.execCommand("copy");
+        document.body.removeChild(ta);
+      }
+      setCopied(true);
+      if (copyTimerRef.current) window.clearTimeout(copyTimerRef.current);
+      copyTimerRef.current = window.setTimeout(() => setCopied(false), 1500);
+    } catch (e) {
+      console.error("Copy failed", e);
+    }
+  };
+
+  useEffect(() => {
+    if (isProcessing) {
+      document.title = `${progressPercent}% | Grammar Fixer`;
+    } else {
+      document.title = "Grammar Fixer";
+    }
+  }, [isProcessing, progressPercent]);
 
   return (
     <div style={{ maxWidth: "1280px", margin: "2rem auto", textAlign: "left" }}>
@@ -132,6 +166,15 @@ function App() {
         >
           Clear
         </button>
+        <button
+          onClick={handleCopy}
+          disabled={!correctedText}
+          style={{ marginLeft: 12 }}
+          aria-label="Copy corrected result to clipboard"
+          title={correctedText ? "Copy corrected result" : "No result to copy"}
+        >
+          {copied ? "Copied!" : "Copy Result"}
+        </button>
       </div>
 
       {isProcessing && (
@@ -155,6 +198,19 @@ function App() {
             leftTitle="Original"
             rightTitle="Corrected"
           />
+        </div>
+      )}
+
+      {isProcessing && (
+        <div className="floating-progress" role="status" aria-live="polite">
+          <div className="floating-progress-row">
+            <span>
+              {progressPercent}% ({correctedParas.filter(Boolean).length}/{totalParagraphs})
+            </span>
+          </div>
+          <div className="floating-progress-bar">
+            <div className="floating-progress-fill" style={{ width: `${progressPercent}%` }} />
+          </div>
         </div>
       )}
     </div>
