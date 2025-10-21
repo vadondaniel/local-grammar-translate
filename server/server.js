@@ -13,6 +13,7 @@ const OLLAMA_PORT = Number(process.env.OLLAMA_PORT || 11434);
 const OLLAMA_AUTOSTART = /^(1|true|yes)$/i.test(process.env.OLLAMA_AUTOSTART || "false");
 const OLLAMA_START_TIMEOUT_MS = Number(process.env.OLLAMA_START_TIMEOUT_MS || 15000);
 const OLLAMA_RUN_TIMEOUT_MS = Number(process.env.OLLAMA_RUN_TIMEOUT_MS || 120000); // per paragraph
+const OLLAMA_CONCURRENCY = Math.max(1, Number(process.env.OLLAMA_CONCURRENCY || 2));
 
 // Quick TCP check to see if the Ollama daemon is reachable
 function isOllamaReachable(host = OLLAMA_HOST, port = OLLAMA_PORT, timeoutMs = 1000) {
@@ -155,11 +156,29 @@ app.post("/api/fix-stream", async (req, res) => {
   res.flushHeaders?.();
 
   try {
-    for (let i = 0; i < paragraphs.length; i++) {
-      const para = paragraphs[i].trim();
-      if (!para) continue;
+    const total = paragraphs.length;
+    let nextToStart = 0;
+    let nextToEmit = 0;
+    let inFlight = 0;
+    const results = new Array(total);
 
-      const prompt = `
+    const emitReady = async () => {
+      // Emit in order as far as we can
+      while (nextToEmit < total && results[nextToEmit]) {
+        const item = results[nextToEmit];
+        res.write(JSON.stringify(item) + "\n");
+        if (res.flush) res.flush();
+        nextToEmit++;
+        // Small breather for the stream
+        await new Promise((r) => setTimeout(r, 10));
+      }
+    };
+
+    const launchNext = () => {
+      while (inFlight < OLLAMA_CONCURRENCY && nextToStart < total) {
+        const i = nextToStart++;
+        const para = paragraphs[i].trim();
+        const prompt = `
 Correct the grammar of the following paragraph, if necessary.
 - Keep the original meaning and style.
 - Do NOT include explanations, commentary, or extra text.
@@ -169,19 +188,32 @@ Paragraph:
 ${para}
 `.trim();
 
-      let corrected = "";
-      try {
-        corrected = await runOllama(usedModel, prompt);
-      } catch (err) {
-        corrected = "(error)";
+        inFlight++;
+        runOllama(usedModel, prompt)
+          .then((corrected) => {
+            results[i] = { index: i, original: para, corrected: corrected || "" };
+          })
+          .catch(() => {
+            results[i] = { index: i, original: para, corrected: "(error)" };
+          })
+          .finally(async () => {
+            inFlight--;
+            await emitReady();
+            launchNext();
+          });
       }
+    };
 
-      res.write(JSON.stringify({ index: i, original: para, corrected }) + "\n");
-      if (res.flush) res.flush();
+    launchNext();
 
-      // Give the TCP stream a short breather
-      await new Promise((r) => setTimeout(r, 50));
-    }
+    // Wait for all to be emitted
+    await new Promise((resolve) => {
+      const check = () => {
+        if (nextToEmit >= total && inFlight === 0) return resolve();
+        setTimeout(check, 50);
+      };
+      check();
+    });
   } catch (err) {
     console.error("Streaming error:", err);
     res.write(JSON.stringify({ error: "stream_error" }) + "\n");
