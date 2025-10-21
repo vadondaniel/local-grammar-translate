@@ -31,6 +31,16 @@ function App() {
         body: JSON.stringify({ text, model }),
       });
 
+      // Handle server errors (e.g., Ollama not running)
+      if (!res.ok) {
+        let message = "Server error";
+        try {
+          const data = await res.json();
+          if (data?.message) message = data.message;
+        } catch {}
+        throw new Error(message);
+      }
+
       if (!res.body) throw new Error("No response body");
 
       const reader = res.body.getReader();
@@ -77,8 +87,10 @@ function App() {
       }
 
       setProgressPercent(100);
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
+      const msg = err?.message || "Unexpected error";
+      if (typeof window !== "undefined") alert(msg);
     } finally {
       setIsProcessing(false);
     }

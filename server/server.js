@@ -1,6 +1,7 @@
 const express = require("express");
 const cors = require("cors");
 const { execSync } = require("child_process");
+const net = require("net");
 
 const app = express();
 app.use(cors());
@@ -8,12 +9,47 @@ app.use(express.json());
 
 const DEFAULT_MODEL = "gemma3";
 
+// Quick TCP check to see if the Ollama daemon is reachable
+function isOllamaReachable(host = "127.0.0.1", port = 11434, timeoutMs = 1000) {
+  return new Promise((resolve) => {
+    const socket = new net.Socket();
+    let finished = false;
+
+    const finish = (ok) => {
+      if (finished) return;
+      finished = true;
+      try { socket.destroy(); } catch {}
+      resolve(ok);
+    };
+
+    socket.setTimeout(timeoutMs);
+    socket.once("connect", () => finish(true));
+    socket.once("timeout", () => finish(false));
+    socket.once("error", () => finish(false));
+    try {
+      socket.connect(port, host);
+    } catch {
+      finish(false);
+    }
+  });
+}
+
 app.post("/api/fix-stream", async (req, res) => {
   const { text, model } = req.body;
   const usedModel = model || DEFAULT_MODEL;
   if (!text) return res.status(400).json({ error: "No text provided." });
 
   const paragraphs = text.split(/\n\s*\n+/).filter(Boolean);
+
+  // Fail fast if Ollama isn't up to avoid hanging
+  const reachable = await isOllamaReachable();
+  if (!reachable) {
+    return res.status(503).json({
+      error: "ollama_unavailable",
+      message:
+        "Ollama is not reachable on 127.0.0.1:11434. Please start Ollama (e.g., 'ollama serve') and try again.",
+    });
+  }
 
   res.setHeader("Content-Type", "application/x-ndjson; charset=utf-8");
   res.setHeader("Cache-Control", "no-cache");
@@ -41,6 +77,8 @@ ${para}
           input: prompt,
           encoding: "utf-8",
           stdio: ["pipe", "pipe", "pipe"],
+          // Prevent indefinite hangs in case of daemon or model issues
+          timeout: 120000, // 120s per paragraph
         }).trim();
       } catch (err) {
         corrected = "(error)";
