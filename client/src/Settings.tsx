@@ -97,7 +97,7 @@ const Settings: React.FC<SettingsProps> = ({ open, onClose, onSaved }) => {
           )}
           {cfg && (
             <div className="modal-grid">
-              <label style={{ display: "flex", flexDirection: "column" }}>
+              <label className="form-row">
                 <span>Ollama Host</span>
                 <input
                   type="text"
@@ -105,7 +105,7 @@ const Settings: React.FC<SettingsProps> = ({ open, onClose, onSaved }) => {
                   onChange={(e) => update({ OLLAMA_HOST: e.target.value })}
                 />
               </label>
-              <label style={{ display: "flex", flexDirection: "column" }}>
+              <label className="form-row">
                 <span>Ollama Port</span>
                 <input
                   type="number"
@@ -113,7 +113,7 @@ const Settings: React.FC<SettingsProps> = ({ open, onClose, onSaved }) => {
                   onChange={(e) => update({ OLLAMA_PORT: Number(e.target.value) || 0 })}
                 />
               </label>
-              <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <label className="form-row inline" style={{ gridColumn: "1 / -1" }}>
                 <input
                   type="checkbox"
                   checked={cfg.OLLAMA_AUTOSTART}
@@ -121,8 +121,7 @@ const Settings: React.FC<SettingsProps> = ({ open, onClose, onSaved }) => {
                 />
                 <span>Autostart Ollama (local only)</span>
               </label>
-              <div />
-              <label style={{ display: "flex", flexDirection: "column" }}>
+              <label className="form-row">
                 <span>Start Timeout (ms)</span>
                 <input
                   type="number"
@@ -130,7 +129,7 @@ const Settings: React.FC<SettingsProps> = ({ open, onClose, onSaved }) => {
                   onChange={(e) => update({ OLLAMA_START_TIMEOUT_MS: Number(e.target.value) || 0 })}
                 />
               </label>
-              <label style={{ display: "flex", flexDirection: "column" }}>
+              <label className="form-row">
                 <span>Run Timeout per Paragraph (ms)</span>
                 <input
                   type="number"
@@ -138,7 +137,7 @@ const Settings: React.FC<SettingsProps> = ({ open, onClose, onSaved }) => {
                   onChange={(e) => update({ OLLAMA_RUN_TIMEOUT_MS: Number(e.target.value) || 0 })}
                 />
               </label>
-              <label style={{ display: "flex", flexDirection: "column" }}>
+              <label className="form-row">
                 <span>Concurrency</span>
                 <input
                   type="number"
@@ -147,7 +146,7 @@ const Settings: React.FC<SettingsProps> = ({ open, onClose, onSaved }) => {
                   onChange={(e) => update({ OLLAMA_CONCURRENCY: Math.max(1, Number(e.target.value) || 1) })}
                 />
               </label>
-              <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <label className="form-row inline" style={{ gridColumn: "1 / -1" }}>
                 <input
                   type="checkbox"
                   checked={persist}

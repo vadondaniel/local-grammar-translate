@@ -190,6 +190,8 @@ input[type="number"] {
   border: 1px solid #e5e7eb;
   border-radius: 12px;
   box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
+  max-height: 85vh;
+  overflow: hidden;
 }
 
 .modal-header {
@@ -202,6 +204,8 @@ input[type="number"] {
 
 .modal-body {
   padding: 16px;
+  max-height: 70vh;
+  overflow: auto;
 }
 
 .modal-grid {
@@ -210,12 +214,17 @@ input[type="number"] {
   gap: 12px;
 }
 
+@media (max-width: 700px) {
+  .modal-grid { grid-template-columns: 1fr; }
+}
+
 .modal-actions {
   padding: 12px 16px;
   border-top: 1px solid #e5e7eb;
   display: flex;
   align-items: center;
   gap: 8px;
+  justify-content: flex-end;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -235,6 +244,35 @@ label span {
 }
 @media (prefers-color-scheme: dark) {
   label span { color: #9ca3af; }
+}
+
+/* Settings form rows */
+.form-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.form-row.inline {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 1px dashed transparent;
+  border-radius: 8px;
+}
+
+.modal-body input[type="text"],
+.modal-body input[type="number"],
+.modal-body select {
+  width: 100%;
+  padding: 0.5rem 0.6rem;
+  box-sizing: border-box;
+}
+
+.form-row.inline input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
 }
 
 /* ====== Progress Bar ====== */
