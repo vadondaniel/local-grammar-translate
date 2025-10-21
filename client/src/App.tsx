@@ -7,6 +7,8 @@ function App() {
   const [model, setModel] = useState("gemma3");
 
   const [isProcessing, setIsProcessing] = useState(false);
+  const [serverReady, setServerReady] = useState(false);
+  const [serverMessage, setServerMessage] = useState<string | null>(null);
   const [progressPercent, setProgressPercent] = useState(0);
   const [totalParagraphs, setTotalParagraphs] = useState(0);
 
@@ -96,6 +98,37 @@ function App() {
     }
   };
 
+  // Poll server health and disable action until ready
+  useEffect(() => {
+    let active = true;
+    let timer: number | null = null;
+    const check = async () => {
+      try {
+        const res = await fetch("http://localhost:3001/api/health?start=1");
+        const data = await res.json();
+        if (!active) return;
+        if (res.ok && data?.ok) {
+          setServerReady(true);
+          setServerMessage(null);
+        } else {
+          setServerReady(false);
+          setServerMessage(data?.message || "Server not ready");
+        }
+      } catch (e) {
+        if (!active) return;
+        setServerReady(false);
+        setServerMessage("Cannot contact server");
+      } finally {
+        if (active) timer = window.setTimeout(check, 2000);
+      }
+    };
+    check();
+    return () => {
+      active = false;
+      if (timer) window.clearTimeout(timer);
+    };
+  }, []);
+
   const handleClear = () => {
     if (isProcessing) return;
     setText("");
@@ -167,8 +200,8 @@ function App() {
       </div>
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <button onClick={handleSubmit} disabled={isProcessing}>
-          {isProcessing ? "Processing..." : "Fix Grammar"}
+        <button onClick={handleSubmit} disabled={isProcessing || !serverReady}>
+          {isProcessing ? "Processing..." : serverReady ? "Fix Grammar" : "Waiting for Ollama..."}
         </button>
         <button
           onClick={handleClear}
@@ -198,6 +231,12 @@ function App() {
               style={{ width: `${progressPercent}%` }}
             />
           </div>
+        </div>
+      )}
+
+      {!isProcessing && !serverReady && (
+        <div className="progress-container" role="status" aria-live="polite">
+          {serverMessage || "Starting Ollama..."}
         </div>
       )}
 

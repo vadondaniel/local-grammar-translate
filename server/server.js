@@ -1,6 +1,6 @@
 const express = require("express");
 const cors = require("cors");
-const { execSync } = require("child_process");
+const { spawn } = require("child_process");
 const net = require("net");
 
 const app = express();
@@ -8,9 +8,14 @@ app.use(cors());
 app.use(express.json());
 
 const DEFAULT_MODEL = "gemma3";
+const OLLAMA_HOST = process.env.OLLAMA_HOST || "127.0.0.1";
+const OLLAMA_PORT = Number(process.env.OLLAMA_PORT || 11434);
+const OLLAMA_AUTOSTART = /^(1|true|yes)$/i.test(process.env.OLLAMA_AUTOSTART || "false");
+const OLLAMA_START_TIMEOUT_MS = Number(process.env.OLLAMA_START_TIMEOUT_MS || 15000);
+const OLLAMA_RUN_TIMEOUT_MS = Number(process.env.OLLAMA_RUN_TIMEOUT_MS || 120000); // per paragraph
 
 // Quick TCP check to see if the Ollama daemon is reachable
-function isOllamaReachable(host = "127.0.0.1", port = 11434, timeoutMs = 1000) {
+function isOllamaReachable(host = OLLAMA_HOST, port = OLLAMA_PORT, timeoutMs = 1000) {
   return new Promise((resolve) => {
     const socket = new net.Socket();
     let finished = false;
@@ -34,6 +39,100 @@ function isOllamaReachable(host = "127.0.0.1", port = 11434, timeoutMs = 1000) {
   });
 }
 
+async function waitForReachable(totalMs = OLLAMA_START_TIMEOUT_MS, intervalMs = 300) {
+  const start = Date.now();
+  while (Date.now() - start < totalMs) {
+    // eslint-disable-next-line no-await-in-loop
+    if (await isOllamaReachable()) return true;
+    // eslint-disable-next-line no-await-in-loop
+    await new Promise((r) => setTimeout(r, intervalMs));
+  }
+  return false;
+}
+
+let ollamaProc = null;
+function startOllamaServe() {
+  try {
+    // If already started by us and still running, skip
+    if (ollamaProc && !ollamaProc.killed) return ollamaProc;
+    const child = spawn("ollama", ["serve"], {
+      detached: true,
+      stdio: "ignore",
+      shell: false,
+    });
+    child.unref();
+    ollamaProc = child;
+    return child;
+  } catch (e) {
+    return null;
+  }
+}
+
+async function ensureOllamaRunning(maybeStart = true) {
+  const reachable = await isOllamaReachable();
+  if (reachable) return { reachable: true, started: false };
+  if (!maybeStart && !OLLAMA_AUTOSTART) return { reachable: false, started: false };
+
+  const child = startOllamaServe();
+  if (!child) return { reachable: false, started: false };
+  const ok = await waitForReachable();
+  return { reachable: ok, started: true };
+}
+
+function runOllama(model, prompt, timeoutMs = OLLAMA_RUN_TIMEOUT_MS) {
+  return new Promise((resolve, reject) => {
+    const args = ["run", model, "--hidethinking"]; // output only final text
+    const child = spawn("ollama", args, { stdio: ["pipe", "pipe", "pipe"], shell: false });
+
+    let out = "";
+    let errBuf = "";
+    let timedOut = false;
+
+    const timer = setTimeout(() => {
+      timedOut = true;
+      try { child.kill(); } catch {}
+    }, timeoutMs);
+
+    child.stdout.setEncoding("utf-8");
+    child.stderr.setEncoding("utf-8");
+    child.stdout.on("data", (chunk) => { out += chunk; });
+    child.stderr.on("data", (chunk) => { errBuf += chunk; });
+
+    child.on("error", (err) => {
+      clearTimeout(timer);
+      reject(err);
+    });
+
+    child.on("close", (code) => {
+      clearTimeout(timer);
+      if (timedOut) return reject(new Error("ollama_run_timeout"));
+      if (code !== 0) return reject(new Error(errBuf || `ollama exited with ${code}`));
+      resolve(out.trim());
+    });
+
+    try {
+      child.stdin.write(prompt);
+      child.stdin.end();
+    } catch (e) {
+      clearTimeout(timer);
+      try { child.kill(); } catch {}
+      reject(e);
+    }
+  });
+}
+
+app.get("/api/health", async (req, res) => {
+  try {
+    const autostartParam = String(req.query.start || "").toLowerCase();
+    const maybeStart = autostartParam === "1" || autostartParam === "true" || autostartParam === "yes";
+    const { reachable, started } = await ensureOllamaRunning(maybeStart);
+    if (reachable) return res.json({ ok: true, reachable: true, starting: !!started });
+    return res.status(503).json({ ok: false, reachable: false, starting: !!started, message: "Ollama is not reachable." });
+  } catch (e) {
+    return res.status(500).json({ ok: false, error: "health_error" });
+  }
+});
+
 app.post("/api/fix-stream", async (req, res) => {
   const { text, model } = req.body;
   const usedModel = model || DEFAULT_MODEL;
@@ -41,13 +140,12 @@ app.post("/api/fix-stream", async (req, res) => {
 
   const paragraphs = text.split(/\n\s*\n+/).filter(Boolean);
 
-  // Fail fast if Ollama isn't up to avoid hanging
-  const reachable = await isOllamaReachable();
+  // Ensure Ollama is running (optionally autostart)
+  const { reachable } = await ensureOllamaRunning(true);
   if (!reachable) {
     return res.status(503).json({
       error: "ollama_unavailable",
-      message:
-        "Ollama is not reachable on 127.0.0.1:11434. Please start Ollama (e.g., 'ollama serve') and try again.",
+      message: `Ollama is not reachable on ${OLLAMA_HOST}:${OLLAMA_PORT}. Please start Ollama (e.g., 'ollama serve') and try again.`,
     });
   }
 
@@ -73,13 +171,7 @@ ${para}
 
       let corrected = "";
       try {
-        corrected = execSync(`ollama run ${usedModel} --hidethinking`, {
-          input: prompt,
-          encoding: "utf-8",
-          stdio: ["pipe", "pipe", "pipe"],
-          // Prevent indefinite hangs in case of daemon or model issues
-          timeout: 120000, // 120s per paragraph
-        }).trim();
+        corrected = await runOllama(usedModel, prompt);
       } catch (err) {
         corrected = "(error)";
       }
