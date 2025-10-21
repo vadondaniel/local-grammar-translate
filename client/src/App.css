@@ -201,6 +201,35 @@ h2 {
   box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.05);
 }
 
+.inline-diff-spacer {
+  height: 0;
+  pointer-events: none;
+  user-select: none;
+}
+
+/* Grid-based aligned layout */
+.inline-diff-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  align-items: stretch; /* ensure cells in the same row match height */
+}
+
+.inline-diff-header {
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+  color: #374151;
+}
+
+.inline-diff-cell {
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 1rem;
+  line-height: 1.6;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
 .inline-diff-paragraph {
   margin: 0 0 1rem;
 }
@@ -221,6 +250,15 @@ h2 {
 }
 
 @media (prefers-color-scheme: dark) {
+  .inline-diff-header {
+    color: #f9fafb;
+  }
+
+  .inline-diff-cell {
+    background: #1f2937;
+    border-color: #374151;
+  }
+
   .inline-diff-title {
     color: #f9fafb;
   }
