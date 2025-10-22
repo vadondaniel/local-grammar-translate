@@ -48,6 +48,160 @@ try {
 
 let CONFIG = normalizeConfig({ ...ENV_DEFAULTS, ...FILE_DEFAULTS });
 
+const TRANSLATOR_INPUT_LANGS = ["auto", "english", "hungarian", "japanese"];
+const TRANSLATOR_OUTPUT_LANGS = ["english", "hungarian", "japanese"];
+const LANGUAGE_LABELS = {
+  auto: "auto-detect",
+  english: "English",
+  hungarian: "Hungarian",
+  japanese: "Japanese",
+};
+
+function normalizeTranslatorSource(val) {
+  const code = String(val || "").toLowerCase();
+  return TRANSLATOR_INPUT_LANGS.includes(code) ? code : "auto";
+}
+
+function normalizeTranslatorTarget(val) {
+  const code = String(val || "").toLowerCase();
+  return TRANSLATOR_OUTPUT_LANGS.includes(code) ? code : "english";
+}
+
+function describeSourceLanguage(code) {
+  if (code === "auto") return "Detect the source language automatically.";
+  const label = LANGUAGE_LABELS[code] || code;
+  return `The source language is ${label}.`;
+}
+
+function describeTargetLanguage(code) {
+  const label = LANGUAGE_LABELS[code] || code;
+  return `Translate into ${label}.`;
+}
+
+function normalizeChunkOptions(raw) {
+  const out = { maxParagraphs: 1, maxChars: 0 };
+  if (raw && typeof raw === "object") {
+    const mp = Number(raw.maxParagraphs);
+    if (Number.isFinite(mp) && mp > 0) {
+      out.maxParagraphs = Math.max(1, Math.min(20, Math.floor(mp)));
+    }
+    const mc = Number(raw.maxChars);
+    if (Number.isFinite(mc) && mc > 0) {
+      out.maxChars = Math.max(0, Math.min(20000, Math.floor(mc)));
+    }
+  }
+  return out;
+}
+
+function chunkTranslationItems(items, opts) {
+  const { maxParagraphs, maxChars } = opts;
+  const charLimit = maxChars > 0 ? maxChars : Infinity;
+  const limitParagraphs = Math.max(1, maxParagraphs || 1);
+  const chunks = [];
+  let current = [];
+  let charCount = 0;
+
+  for (const item of items) {
+    const len = item.text.length;
+    const exceedsParagraphs = current.length >= limitParagraphs;
+    const exceedsChars = charLimit !== Infinity && current.length > 0 && charCount + len > charLimit;
+    if ((exceedsParagraphs || exceedsChars) && current.length > 0) {
+      chunks.push(current);
+      current = [];
+      charCount = 0;
+    }
+    current.push(item);
+    charCount += len;
+  }
+
+  if (current.length > 0) {
+    chunks.push(current);
+  }
+
+  return chunks;
+}
+
+function stripFence(text) {
+  if (!text) return "";
+  let out = text.trim();
+  if (out.startsWith("```")) {
+    const firstBreak = out.indexOf("\n");
+    const lastFence = out.lastIndexOf("```");
+    if (firstBreak !== -1 && lastFence !== -1 && lastFence > firstBreak) {
+      out = out.slice(firstBreak + 1, lastFence).trim();
+    }
+  }
+  return out;
+}
+
+function parseTranslationPayload(raw, fallbackOrder) {
+  if (!raw) return [];
+  const cleaned = stripFence(raw);
+  let payload = null;
+  try {
+    payload = JSON.parse(cleaned);
+  } catch {
+    try {
+      const firstBrace = cleaned.indexOf("{");
+      const lastBrace = cleaned.lastIndexOf("}");
+      if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+        payload = JSON.parse(cleaned.slice(firstBrace, lastBrace + 1));
+      }
+    } catch {
+      payload = null;
+    }
+  }
+
+  if (payload && Array.isArray(payload.translations)) {
+    const norm = [];
+    for (const entry of payload.translations) {
+      if (!entry) continue;
+      const idx = Number(entry.index);
+      if (!Number.isInteger(idx)) continue;
+      const txt = typeof entry.text === "string" ? entry.text.trim() : "";
+      norm.push({ index: idx, text: txt });
+    }
+    if (norm.length > 0) return norm;
+  }
+
+  // fallback: split by blank lines or newlines
+  const parts = cleaned
+    .split(/\n{2,}|\r?\n\r?\n/)
+    .map((p) => p.trim())
+    .filter(Boolean);
+
+  return fallbackOrder.map((idx, i) => ({
+    index: idx,
+    text: parts[i] || "",
+  }));
+}
+
+function buildTranslationPrompt(chunk, sourceLang, targetLang) {
+  if (!Array.isArray(chunk) || chunk.length === 0) return "";
+  const headerLines = [
+    "You are a professional translator.",
+    describeSourceLanguage(sourceLang),
+    describeTargetLanguage(targetLang),
+    chunk.length > 1
+      ? "Use the combined context of all paragraphs to keep terminology and tone consistent."
+      : "Translate the paragraph accurately while keeping the original intent.",
+  ];
+
+  const requirements = `
+Requirements:
+- Return valid JSON with the structure {"translations":[{"index":<index>,"text":"..."}]}.
+- Use the same numeric indices that are provided with each paragraph below.
+- Provide only the JSON; do not add explanations, markdown, comments, or extra keys.
+- Preserve sentence boundaries and formatting where possible.
+  `.trim();
+
+  const paragraphsBlock = chunk
+    .map((entry) => `[${entry.index}]: ${entry.text}`)
+    .join("\n\n");
+
+  return `${headerLines.join("\n")}\n\n${requirements}\n\nParagraphs:\n${paragraphsBlock}`.trim();
+}
+
 // Quick TCP check to see if the Ollama daemon is reachable
 function isOllamaReachable(host = CONFIG.OLLAMA_HOST, port = CONFIG.OLLAMA_PORT, timeoutMs = 1000) {
   return new Promise((resolve) => {
@@ -357,6 +511,128 @@ ${para}
     res.end();
   }
 });
+
+app.post("/api/translate-stream", async (req, res) => {
+  const body = req.body || {};
+  const text = typeof body.text === "string" ? body.text : "";
+  const usedModel = body.model || DEFAULT_MODEL;
+
+  if (!text.trim()) {
+    return res.status(400).json({ error: "No text provided." });
+  }
+
+  const paragraphs = text.split(/\n\s*\n+/).filter(Boolean);
+  const total = paragraphs.length;
+
+  if (total === 0) {
+    res.setHeader("Content-Type", "application/x-ndjson; charset=utf-8");
+    res.end();
+    return;
+  }
+
+  const { reachable } = await ensureOllamaRunning(true);
+  if (!reachable) {
+    return res.status(503).json({
+      error: "ollama_unavailable",
+      message: `Ollama is not reachable on ${CONFIG.OLLAMA_HOST}:${CONFIG.OLLAMA_PORT}. Please start Ollama (e.g., 'ollama serve') and try again.`,
+    });
+  }
+
+  res.setHeader("Content-Type", "application/x-ndjson; charset=utf-8");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+  res.flushHeaders?.();
+
+  const rawOptions = body.options || {};
+  const sourceLang = normalizeTranslatorSource(rawOptions.sourceLang);
+  const targetLang = normalizeTranslatorTarget(rawOptions.targetLang);
+  const chunkOpts = normalizeChunkOptions(rawOptions.chunking);
+
+  const items = paragraphs.map((para, index) => ({
+    index,
+    text: para.trim(),
+  }));
+  const chunks = chunkTranslationItems(items, chunkOpts);
+
+  const results = new Array(total);
+  let nextChunk = 0;
+  let nextToEmit = 0;
+  let inFlight = 0;
+
+  const emitReady = async () => {
+    while (nextToEmit < total && results[nextToEmit]) {
+      res.write(JSON.stringify(results[nextToEmit]) + "\n");
+      res.flush?.();
+      nextToEmit += 1;
+      // eslint-disable-next-line no-await-in-loop
+      await new Promise((r) => setTimeout(r, 10));
+    }
+  };
+
+  const launchNext = () => {
+    while (inFlight < CONFIG.OLLAMA_CONCURRENCY && nextChunk < chunks.length) {
+      const chunk = chunks[nextChunk++];
+      if (!chunk || chunk.length === 0) continue;
+      const indices = chunk.map((item) => item.index);
+      const prompt = buildTranslationPrompt(chunk, sourceLang, targetLang);
+
+      inFlight += 1;
+      runOllama(usedModel, prompt)
+        .then((output) => {
+          const parsed = parseTranslationPayload(output, indices);
+          const allowed = new Set(indices);
+          const byIndex = new Map();
+          for (const entry of parsed) {
+            if (!entry || !allowed.has(entry.index)) continue;
+            const clean = typeof entry.text === "string" ? entry.text.trim() : "";
+            byIndex.set(entry.index, clean);
+          }
+          for (const idx of indices) {
+            if (!results[idx]) {
+              const textOut = byIndex.has(idx) ? byIndex.get(idx) : "";
+              results[idx] = { index: idx, translated: textOut };
+            }
+          }
+        })
+        .catch(() => {
+          for (const idx of indices) {
+            if (!results[idx]) {
+              results[idx] = { index: idx, translated: "(error)" };
+            }
+          }
+        })
+        .finally(async () => {
+          inFlight -= 1;
+          await emitReady();
+          launchNext();
+        });
+    }
+  };
+
+  try {
+    if (chunks.length === 0) {
+      for (let i = 0; i < total; i += 1) {
+        results[i] = { index: i, translated: "" };
+      }
+      await emitReady();
+    } else {
+      launchNext();
+      await new Promise((resolve) => {
+        const check = () => {
+          if (nextToEmit >= total && inFlight === 0) return resolve();
+          setTimeout(check, 50);
+        };
+        check();
+      });
+    }
+  } catch (err) {
+    console.error("Translation stream error:", err);
+    res.write(JSON.stringify({ error: "stream_error" }) + "\n");
+  } finally {
+    res.end();
+  }
+});
+
 
 app.listen(3001, () =>
   console.log("✅ Server running on http://localhost:3001")

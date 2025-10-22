@@ -2,6 +2,24 @@ import { useEffect, useRef, useState } from "react";
 import "./App.css";
 import InlineDiff from "./InlineDiff";
 import Settings from "./Settings.tsx";
+import type { TranslatorSourceLanguage, TranslatorTargetLanguage } from "./translationOptions";
+import {
+  SOURCE_LANGUAGE_OPTIONS,
+  TARGET_LANGUAGE_OPTIONS,
+  DEFAULT_TRANSLATOR_MAX_PARAGRAPHS,
+  DEFAULT_TRANSLATOR_MAX_CHARS,
+  STORAGE_KEYS as TRANSLATOR_STORAGE_KEYS,
+} from "./translationOptions";
+
+type Mode = "grammar" | "translator";
+
+const MODE_LABELS: Record<Mode, string> = {
+  grammar: "Grammar Fixer",
+  translator: "Translator",
+};
+
+const SOURCE_VALUES = SOURCE_LANGUAGE_OPTIONS.map((o) => o.value);
+const TARGET_VALUES = TARGET_LANGUAGE_OPTIONS.map((o) => o.value);
 
 function App() {
   const [text, setText] = useState("");
@@ -13,6 +31,39 @@ function App() {
     } catch {}
     return "gemma3";
   });
+  const [mode, setMode] = useState<Mode>(() => {
+    try {
+      if (typeof window !== "undefined") {
+        const stored = localStorage.getItem(TRANSLATOR_STORAGE_KEYS.mode);
+        if (stored === "translator" || stored === "grammar") {
+          return stored as Mode;
+        }
+      }
+    } catch {}
+    return "grammar";
+  });
+  const [sourceLang, setSourceLang] = useState<TranslatorSourceLanguage>(() => {
+    try {
+      if (typeof window !== "undefined") {
+        const stored = localStorage.getItem(TRANSLATOR_STORAGE_KEYS.translatorSource) as TranslatorSourceLanguage | null;
+        if (stored && SOURCE_VALUES.includes(stored)) {
+          return stored;
+        }
+      }
+    } catch {}
+    return "auto";
+  });
+  const [targetLang, setTargetLang] = useState<TranslatorTargetLanguage>(() => {
+    try {
+      if (typeof window !== "undefined") {
+        const stored = localStorage.getItem(TRANSLATOR_STORAGE_KEYS.translatorTarget) as TranslatorTargetLanguage | null;
+        if (stored && TARGET_VALUES.includes(stored)) {
+          return stored;
+        }
+      }
+    } catch {}
+    return "english";
+  });
 
   const [isProcessing, setIsProcessing] = useState(false);
   const [serverReady, setServerReady] = useState(false);
@@ -20,14 +71,14 @@ function App() {
   const [progressPercent, setProgressPercent] = useState(0);
   const [totalParagraphs, setTotalParagraphs] = useState(0);
 
-  const [correctedParas, setCorrectedParas] = useState<string[]>([]);
+  const [outputParas, setOutputParas] = useState<string[]>([]);
   const [copied, setCopied] = useState(false);
   const copyTimerRef = useRef<number | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
 
   const handleSubmit = async () => {
     setIsProcessing(true);
-    setCorrectedParas([]);
+    setOutputParas([]);
     setProgressPercent(0);
     setTotalParagraphs(0);
 
@@ -35,8 +86,20 @@ function App() {
     const total = paragraphs.length;
     setTotalParagraphs(total);
 
-    try {
-      // Load grammar options from localStorage at submit time
+    if (total === 0) {
+      setProgressPercent(100);
+      setIsProcessing(false);
+      return;
+    }
+
+    const partials: string[] = new Array(total).fill("");
+    const seen: boolean[] = new Array(total).fill(false);
+    let processed = 0;
+
+    let endpoint = "fix-stream";
+    const payload: Record<string, unknown> = { text, model };
+
+    if (mode === "grammar") {
       let tone = "neutral";
       let strictness = "balanced";
       let punctuationStyle = "unchanged";
@@ -51,14 +114,40 @@ function App() {
           spellingVariant = localStorage.getItem("spellingVariant") || spellingVariant;
         }
       } catch {}
+      payload.options = { tone, strictness, punctuationStyle, units, spellingVariant };
+    } else {
+      endpoint = "translate-stream";
+      let maxParagraphs = DEFAULT_TRANSLATOR_MAX_PARAGRAPHS;
+      let maxChars = DEFAULT_TRANSLATOR_MAX_CHARS;
+      try {
+        if (typeof window !== "undefined") {
+          const storedParas = Number(localStorage.getItem(TRANSLATOR_STORAGE_KEYS.translatorMaxParagraphs));
+          if (Number.isFinite(storedParas) && storedParas > 0) {
+            maxParagraphs = Math.max(1, Math.floor(storedParas));
+          }
+          const storedChars = Number(localStorage.getItem(TRANSLATOR_STORAGE_KEYS.translatorMaxChars));
+          if (Number.isFinite(storedChars) && storedChars > 0) {
+            maxChars = Math.max(0, Math.floor(storedChars));
+          }
+        }
+      } catch {}
+      payload.options = {
+        sourceLang,
+        targetLang,
+        chunking: {
+          maxParagraphs,
+          maxChars,
+        },
+      };
+    }
 
-      const res = await fetch("http://localhost:3001/api/fix-stream", {
+    try {
+      const res = await fetch(`http://localhost:3001/api/${endpoint}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text, model, options: { tone, strictness, punctuationStyle, units, spellingVariant } }),
+        body: JSON.stringify(payload),
       });
 
-      // Handle server errors (e.g., Ollama not running)
       if (!res.ok) {
         let message = "Server error";
         try {
@@ -73,37 +162,47 @@ function App() {
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
       let buffer = "";
-      let processed = 0;
-      let partials: string[] = new Array(total).fill("");
 
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
 
         buffer += decoder.decode(value, { stream: true });
-        let lines = buffer.split("\n");
+        const lines = buffer.split("\n");
         buffer = lines.pop() || "";
 
-        for (const line of lines) {
-          if (!line.trim()) continue;
+        for (const rawLine of lines) {
+          if (!rawLine.trim()) continue;
 
           try {
-            const obj = JSON.parse(line);
+            const obj = JSON.parse(rawLine);
             if (obj.error) continue;
 
-            const { index, corrected } = obj;
-            const wasEmpty = !partials[index];
-            partials[index] = corrected || "";
+            const idxRaw = obj.index;
+            const idx = typeof idxRaw === "number" ? idxRaw : Number(idxRaw);
+            if (!Number.isInteger(idx) || idx < 0 || idx >= total) continue;
 
-            if (wasEmpty && partials[index]) {
+            let valueText = "";
+            if (mode === "grammar") {
+              valueText = typeof obj.corrected === "string" ? obj.corrected : "";
+            } else {
+              if (typeof obj.translated === "string") {
+                valueText = obj.translated;
+              } else if (typeof obj.corrected === "string") {
+                valueText = obj.corrected;
+              }
+            }
+
+            partials[idx] = valueText;
+            if (!seen[idx]) {
+              seen[idx] = true;
               processed += 1;
             }
 
-            // update UI progressively
-            setCorrectedParas([...partials]);
+            setOutputParas([...partials]);
 
             if (total > 0) {
-              setProgressPercent(Math.round((processed / total) * 100));
+              setProgressPercent(Math.min(100, Math.round((processed / total) * 100)));
             } else {
               setProgressPercent((prev) => Math.min(99, prev + 10));
             }
@@ -122,6 +221,30 @@ function App() {
       setIsProcessing(false);
     }
   };
+
+  useEffect(() => {
+    try {
+      if (typeof window !== "undefined") {
+        localStorage.setItem(TRANSLATOR_STORAGE_KEYS.mode, mode);
+      }
+    } catch {}
+  }, [mode]);
+
+  useEffect(() => {
+    try {
+      if (typeof window !== "undefined") {
+        localStorage.setItem(TRANSLATOR_STORAGE_KEYS.translatorSource, sourceLang);
+      }
+    } catch {}
+  }, [sourceLang]);
+
+  useEffect(() => {
+    try {
+      if (typeof window !== "undefined") {
+        localStorage.setItem(TRANSLATOR_STORAGE_KEYS.translatorTarget, targetLang);
+      }
+    } catch {}
+  }, [targetLang]);
 
   // Poll server health and disable action until ready
   useEffect(() => {
@@ -157,21 +280,32 @@ function App() {
   const handleClear = () => {
     if (isProcessing) return;
     setText("");
-    setCorrectedParas([]);
+    setOutputParas([]);
     setProgressPercent(0);
     setTotalParagraphs(0);
   };
 
-  const correctedText = correctedParas.filter(Boolean).join("\n\n");
+  const outputText = outputParas.length ? outputParas.join("\n\n") : "";
+  const headingText = `${MODE_LABELS[mode]} (Ollama)`;
+  const idleActionLabel = mode === "grammar" ? "Fix Grammar" : "Translate";
+  const processingLabel = mode === "grammar" ? "Processing..." : "Translating...";
+  const copyLabel = mode === "grammar" ? "Copy Result" : "Copy Translation";
+  const copyTitle = outputText
+    ? mode === "grammar"
+      ? "Copy corrected result"
+      : "Copy translation result"
+    : "No result to copy";
+  const completedCount = outputParas.filter((entry) => entry.trim().length > 0).length;
+  const progressLabel = mode === "grammar" ? "Progress" : "Translation progress";
 
   const handleCopy = async () => {
-    if (!correctedText) return;
+    if (!outputText) return;
     try {
       if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(correctedText);
+        await navigator.clipboard.writeText(outputText);
       } else {
         const ta = document.createElement("textarea");
-        ta.value = correctedText;
+        ta.value = outputText;
         ta.style.position = "fixed";
         ta.style.opacity = "0";
         document.body.appendChild(ta);
@@ -189,22 +323,43 @@ function App() {
   };
 
   useEffect(() => {
+    const baseTitle = MODE_LABELS[mode];
     if (isProcessing) {
-      document.title = `${progressPercent}% | Grammar Fixer`;
+      document.title = `${progressPercent}% | ${baseTitle}`;
     } else {
-      document.title = "Grammar Fixer";
+      document.title = baseTitle;
     }
-  }, [isProcessing, progressPercent]);
+  }, [isProcessing, progressPercent, mode]);
 
   return (
     <div style={{ maxWidth: "1280px", margin: "2rem auto", textAlign: "left" }}>
-      <h1 style={{ textAlign: "center" }}>Grammar Fixer (Ollama)</h1>
+      <h1 style={{ textAlign: "center" }}>{headingText}</h1>
 
       <div className="toolbar">
+        <div className="mode-toggle" role="group" aria-label="Mode selection">
+          <button
+            type="button"
+            className={`mode-toggle-btn${mode === "grammar" ? " active" : ""}`}
+            onClick={() => setMode("grammar")}
+            disabled={isProcessing}
+          >
+            Grammar
+          </button>
+          <button
+            type="button"
+            className={`mode-toggle-btn${mode === "translator" ? " active" : ""}`}
+            onClick={() => setMode("translator")}
+            disabled={isProcessing}
+          >
+            Translator
+          </button>
+        </div>
         <select
           value={model}
           onChange={(e) => setModel(e.target.value)}
           style={{ width: "155px" }}
+          disabled={isProcessing}
+          aria-label="Model selection"
         >
           <option value="gemma3">Gemma 3 4B</option>
           <option value="deepseek-v3.1:671b-cloud">DeepSeek 671B (Cloud)</option>
@@ -215,14 +370,47 @@ function App() {
           <option value="thinkverse/towerinstruct:latest">TowerInstruct 7B</option>
         </select>
 
+        {mode === "translator" && (
+          <>
+            <select
+              value={sourceLang}
+              onChange={(e) => setSourceLang(e.target.value as TranslatorSourceLanguage)}
+              style={{ width: "150px" }}
+              disabled={isProcessing}
+              aria-label="Source language"
+            >
+              {SOURCE_LANGUAGE_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+            <select
+              value={targetLang}
+              onChange={(e) => setTargetLang(e.target.value as TranslatorTargetLanguage)}
+              style={{ width: "150px" }}
+              disabled={isProcessing}
+              aria-label="Target language"
+            >
+              {TARGET_LANGUAGE_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          </>
+        )}
+
         <button
           className="btn-secondary btn-icon"
           onClick={() => setSettingsOpen((v) => !v)}
           title="Settings"
           aria-label="Open settings"
+          type="button"
         >
-          ⚙️
+          &#9881;
         </button>
+      </div>
 
       <Settings
         open={settingsOpen}
@@ -232,7 +420,6 @@ function App() {
           setServerReady(false);
         }}
       />
-      </div>
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <textarea
@@ -246,30 +433,32 @@ function App() {
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <button onClick={handleSubmit} disabled={isProcessing || !serverReady}>
-          {isProcessing ? "Processing..." : serverReady ? "Fix Grammar" : "Waiting for Ollama..."}
+          {isProcessing ? processingLabel : serverReady ? idleActionLabel : "Waiting for Ollama..."}
         </button>
         <button
           onClick={handleClear}
           disabled={isProcessing}
           style={{ marginLeft: 12 }}
           aria-label="Clear text and results"
+          type="button"
         >
           Clear
         </button>
         <button
           onClick={handleCopy}
-          disabled={!correctedText}
+          disabled={!outputText}
           style={{ marginLeft: 12 }}
-          aria-label="Copy corrected result to clipboard"
-          title={correctedText ? "Copy corrected result" : "No result to copy"}
+          aria-label={copyTitle}
+          title={copyTitle}
+          type="button"
         >
-          {copied ? "Copied!" : "Copy Result"}
+          {copied ? "Copied!" : copyLabel}
         </button>
       </div>
 
       {isProcessing && (
         <div className="progress-container">
-          Progress: {progressPercent}% ({correctedParas.filter(Boolean).length}/{totalParagraphs})
+          {progressLabel}: {progressPercent}% ({completedCount}/{totalParagraphs})
           <div className="progress-bar-bg">
             <div
               className="progress-bar-fill"
@@ -285,15 +474,31 @@ function App() {
         </div>
       )}
 
-      {correctedText && (
+      {mode === "grammar" && outputText && (
         <div style={{ marginTop: "2rem" }}>
           <h2>Difference View</h2>
           <InlineDiff
             oldValue={text}
-            newValue={correctedText}
+            newValue={outputText}
             leftTitle="Original"
             rightTitle="Corrected"
           />
+        </div>
+      )}
+
+      {mode === "translator" && outputText && (
+        <div style={{ marginTop: "2rem" }}>
+          <h2>Translation</h2>
+          <div className="translation-view">
+            <div className="translation-column">
+              <h3>Original</h3>
+              <div className="translation-body">{text || "(no input)"}</div>
+            </div>
+            <div className="translation-column">
+              <h3>Translated</h3>
+              <div className="translation-body">{outputText}</div>
+            </div>
+          </div>
         </div>
       )}
 
@@ -301,7 +506,7 @@ function App() {
         <div className="floating-progress" role="status" aria-live="polite">
           <div className="floating-progress-row">
             <span>
-              {progressPercent}% ({correctedParas.filter(Boolean).length}/{totalParagraphs})
+              {progressPercent}% ({completedCount}/{totalParagraphs})
             </span>
           </div>
           <div className="floating-progress-bar">
@@ -314,3 +519,7 @@ function App() {
 }
 
 export default App;
+
+
+
+

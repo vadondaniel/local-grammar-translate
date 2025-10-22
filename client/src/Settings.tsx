@@ -1,4 +1,12 @@
 import React, { useEffect, useState } from "react";
+import type { TranslatorSourceLanguage, TranslatorTargetLanguage } from "./translationOptions";
+import {
+  SOURCE_LANGUAGE_OPTIONS,
+  TARGET_LANGUAGE_OPTIONS,
+  DEFAULT_TRANSLATOR_MAX_PARAGRAPHS,
+  DEFAULT_TRANSLATOR_MAX_CHARS,
+  STORAGE_KEYS as TRANSLATOR_STORAGE_KEYS,
+} from "./translationOptions";
 
 type Config = {
   OLLAMA_HOST: string;
@@ -20,13 +28,17 @@ const Settings: React.FC<SettingsProps> = ({ open, onClose, onSaved }) => {
   const [persist, setPersist] = useState(true);
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"grammar" | "server">("grammar");
+  const [activeTab, setActiveTab] = useState<"grammar" | "translator" | "server">("grammar");
   const [defaultModel, setDefaultModel] = useState<string>("gemma3");
   const [tone, setTone] = useState<string>("neutral");
   const [strictness, setStrictness] = useState<string>("balanced");
   const [punctuationStyle, setPunctuationStyle] = useState<string>("simple");
   const [units, setUnits] = useState<string>("unchanged");
   const [spellingVariant, setSpellingVariant] = useState<string>("en-US");
+  const [translatorSource, setTranslatorSource] = useState<TranslatorSourceLanguage>("auto");
+  const [translatorTarget, setTranslatorTarget] = useState<TranslatorTargetLanguage>("english");
+  const [translatorMaxParagraphs, setTranslatorMaxParagraphs] = useState<number>(DEFAULT_TRANSLATOR_MAX_PARAGRAPHS);
+  const [translatorMaxChars, setTranslatorMaxChars] = useState<number>(DEFAULT_TRANSLATOR_MAX_CHARS);
 
   useEffect(() => {
     if (!open) return;
@@ -62,6 +74,22 @@ const Settings: React.FC<SettingsProps> = ({ open, onClose, onSaved }) => {
         if (savedUnits) setUnits(savedUnits);
         const savedSpelling = localStorage.getItem("spellingVariant");
         if (savedSpelling) setSpellingVariant(savedSpelling);
+        const savedSource = localStorage.getItem(TRANSLATOR_STORAGE_KEYS.translatorSource) as TranslatorSourceLanguage | null;
+        if (savedSource && SOURCE_LANGUAGE_OPTIONS.some((opt) => opt.value === savedSource)) {
+          setTranslatorSource(savedSource);
+        }
+        const savedTarget = localStorage.getItem(TRANSLATOR_STORAGE_KEYS.translatorTarget) as TranslatorTargetLanguage | null;
+        if (savedTarget && TARGET_LANGUAGE_OPTIONS.some((opt) => opt.value === savedTarget)) {
+          setTranslatorTarget(savedTarget);
+        }
+        const savedMaxParas = Number(localStorage.getItem(TRANSLATOR_STORAGE_KEYS.translatorMaxParagraphs));
+        if (Number.isFinite(savedMaxParas) && savedMaxParas > 0) {
+          setTranslatorMaxParagraphs(Math.max(1, Math.floor(savedMaxParas)));
+        }
+        const savedMaxChars = Number(localStorage.getItem(TRANSLATOR_STORAGE_KEYS.translatorMaxChars));
+        if (Number.isFinite(savedMaxChars) && savedMaxChars >= 0) {
+          setTranslatorMaxChars(Math.max(0, Math.floor(savedMaxChars)));
+        }
       }
     } catch {}
     return () => { active = false; };
@@ -93,6 +121,16 @@ const Settings: React.FC<SettingsProps> = ({ open, onClose, onSaved }) => {
           localStorage.setItem("punctuationStyle", punctuationStyle);
           localStorage.setItem("unitsPreference", units);
           localStorage.setItem("spellingVariant", spellingVariant);
+          const normalizedSource = translatorSource;
+          const normalizedTarget = translatorTarget;
+          const normalizedMaxParas = Math.max(1, Math.floor(Number.isFinite(translatorMaxParagraphs) ? translatorMaxParagraphs : DEFAULT_TRANSLATOR_MAX_PARAGRAPHS));
+          const normalizedMaxChars = Math.max(0, Math.floor(Number.isFinite(translatorMaxChars) ? translatorMaxChars : DEFAULT_TRANSLATOR_MAX_CHARS));
+          setTranslatorMaxParagraphs(normalizedMaxParas);
+          setTranslatorMaxChars(normalizedMaxChars);
+          localStorage.setItem(TRANSLATOR_STORAGE_KEYS.translatorSource, normalizedSource);
+          localStorage.setItem(TRANSLATOR_STORAGE_KEYS.translatorTarget, normalizedTarget);
+          localStorage.setItem(TRANSLATOR_STORAGE_KEYS.translatorMaxParagraphs, String(normalizedMaxParas));
+          localStorage.setItem(TRANSLATOR_STORAGE_KEYS.translatorMaxChars, String(normalizedMaxChars));
         }
       } catch {}
 
@@ -141,6 +179,14 @@ const Settings: React.FC<SettingsProps> = ({ open, onClose, onSaved }) => {
               role="tab"
             >
               Grammar
+            </button>
+            <button
+              className={`tab-btn ${activeTab === "translator" ? "active" : ""}`}
+              onClick={() => setActiveTab("translator")}
+              aria-selected={activeTab === "translator"}
+              role="tab"
+            >
+              Translator
             </button>
             <button
               className={`tab-btn ${activeTab === "server" ? "active" : ""}`}
@@ -222,6 +268,52 @@ const Settings: React.FC<SettingsProps> = ({ open, onClose, onSaved }) => {
             </div>
           )}
 
+          {activeTab === "translator" && (
+            <div className="modal-grid" role="tabpanel">
+              <label className="form-row">
+                <span>Default Source Language</span>
+                <select value={translatorSource} onChange={(e) => setTranslatorSource(e.target.value as TranslatorSourceLanguage)}>
+                  {SOURCE_LANGUAGE_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="form-row">
+                <span>Default Target Language</span>
+                <select value={translatorTarget} onChange={(e) => setTranslatorTarget(e.target.value as TranslatorTargetLanguage)}>
+                  {TARGET_LANGUAGE_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="form-row">
+                <span>Max Paragraphs Per Call</span>
+                <input
+                  type="number"
+                  min={1}
+                  value={translatorMaxParagraphs}
+                  onChange={(e) => setTranslatorMaxParagraphs(Math.max(1, Number(e.target.value) || 1))}
+                />
+              </label>
+              <label className="form-row">
+                <span>Max Characters Per Call (0 = unlimited)</span>
+                <input
+                  type="number"
+                  min={0}
+                  value={translatorMaxChars}
+                  onChange={(e) => setTranslatorMaxChars(Math.max(0, Number(e.target.value) || 0))}
+                />
+              </label>
+              <div style={{ gridColumn: "1 / -1", color: "#6b7280", fontSize: "0.9rem" }}>
+                These defaults apply when using translator mode and determine chunk size for context.
+              </div>
+            </div>
+          )}
+
           {activeTab === "grammar" && (
             <div className="modal-grid" role="tabpanel">
               <label className="form-row" style={{ gridColumn: "1 / -1" }}>
@@ -299,3 +391,4 @@ const Settings: React.FC<SettingsProps> = ({ open, onClose, onSaved }) => {
 };
 
 export default Settings;
+
