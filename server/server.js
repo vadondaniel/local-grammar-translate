@@ -50,6 +50,7 @@ let CONFIG = normalizeConfig({ ...ENV_DEFAULTS, ...FILE_DEFAULTS });
 
 const TRANSLATOR_INPUT_LANGS = ["auto", "english", "hungarian", "japanese"];
 const TRANSLATOR_OUTPUT_LANGS = ["english", "hungarian", "japanese"];
+const TRANSLATOR_PUNCTUATION_STYLES = ["unchanged", "auto", "simple", "smart"];
 const LANGUAGE_LABELS = {
   auto: "auto-detect",
   english: "English",
@@ -67,6 +68,11 @@ function normalizeTranslatorTarget(val) {
   return TRANSLATOR_OUTPUT_LANGS.includes(code) ? code : "english";
 }
 
+function normalizeTranslatorPunctuation(val) {
+  const code = String(val || "").toLowerCase();
+  return TRANSLATOR_PUNCTUATION_STYLES.includes(code) ? code : "unchanged";
+}
+
 function describeSourceLanguage(code) {
   if (code === "auto") return "Detect the source language automatically.";
   const label = LANGUAGE_LABELS[code] || code;
@@ -78,6 +84,19 @@ function describeTargetLanguage(code) {
   return `Translate into ${label}.`;
 }
 
+function describePunctuationPreference(code) {
+  switch (code) {
+    case "simple":
+      return "Use simple ASCII punctuation in the translation (straight quotes, hyphen, three dots).";
+    case "smart":
+      return "Use typographic punctuation in the translation (proper quotation marks, dashes, ellipsis).";
+    case "auto":
+      return "Choose a consistent punctuation style that fits the translated text.";
+    default:
+      return "Preserve punctuation style from the source text wherever reasonable.";
+  }
+}
+
 function normalizeChunkOptions(raw) {
   const out = { maxParagraphs: 1, maxChars: 0 };
   if (raw && typeof raw === "object") {
@@ -86,7 +105,7 @@ function normalizeChunkOptions(raw) {
       out.maxParagraphs = Math.max(1, Math.min(20, Math.floor(mp)));
     }
     const mc = Number(raw.maxChars);
-    if (Number.isFinite(mc) && mc > 0) {
+    if (Number.isFinite(mc) && mc >= 0) {
       out.maxChars = Math.max(0, Math.min(20000, Math.floor(mc)));
     }
   }
@@ -176,12 +195,13 @@ function parseTranslationPayload(raw, fallbackOrder) {
   }));
 }
 
-function buildTranslationPrompt(chunk, sourceLang, targetLang) {
+function buildTranslationPrompt(chunk, sourceLang, targetLang, punctuationStyle) {
   if (!Array.isArray(chunk) || chunk.length === 0) return "";
   const headerLines = [
     "You are a professional translator.",
     describeSourceLanguage(sourceLang),
     describeTargetLanguage(targetLang),
+    describePunctuationPreference(punctuationStyle),
     chunk.length > 1
       ? "Use the combined context of all paragraphs to keep terminology and tone consistent."
       : "Translate the paragraph accurately while keeping the original intent.",
@@ -192,6 +212,7 @@ Requirements:
 - Return valid JSON with the structure {"translations":[{"index":<index>,"text":"..."}]}.
 - Use the same numeric indices that are provided with each paragraph below.
 - Provide only the JSON; do not add explanations, markdown, comments, or extra keys.
+- Respect the punctuation guidance and keep it consistent throughout the translation.
 - Preserve sentence boundaries and formatting where possible.
   `.trim();
 
@@ -546,6 +567,7 @@ app.post("/api/translate-stream", async (req, res) => {
   const rawOptions = body.options || {};
   const sourceLang = normalizeTranslatorSource(rawOptions.sourceLang);
   const targetLang = normalizeTranslatorTarget(rawOptions.targetLang);
+  const punctuationStyle = normalizeTranslatorPunctuation(rawOptions.punctuationStyle);
   const chunkOpts = normalizeChunkOptions(rawOptions.chunking);
 
   const items = paragraphs.map((para, index) => ({
@@ -574,7 +596,7 @@ app.post("/api/translate-stream", async (req, res) => {
       const chunk = chunks[nextChunk++];
       if (!chunk || chunk.length === 0) continue;
       const indices = chunk.map((item) => item.index);
-      const prompt = buildTranslationPrompt(chunk, sourceLang, targetLang);
+      const prompt = buildTranslationPrompt(chunk, sourceLang, targetLang, punctuationStyle);
 
       inFlight += 1;
       runOllama(usedModel, prompt)

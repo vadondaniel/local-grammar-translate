@@ -2,13 +2,19 @@ import { useEffect, useRef, useState } from "react";
 import "./App.css";
 import InlineDiff from "./InlineDiff";
 import Settings from "./Settings.tsx";
-import type { TranslatorSourceLanguage, TranslatorTargetLanguage } from "./translationOptions";
+import AlignedParagraphs from "./AlignedParagraphs";
+import type {
+  TranslatorSourceLanguage,
+  TranslatorTargetLanguage,
+  TranslatorPunctuationStyle,
+} from "./translationOptions";
 import {
   SOURCE_LANGUAGE_OPTIONS,
   TARGET_LANGUAGE_OPTIONS,
   DEFAULT_TRANSLATOR_MAX_PARAGRAPHS,
   DEFAULT_TRANSLATOR_MAX_CHARS,
   STORAGE_KEYS as TRANSLATOR_STORAGE_KEYS,
+  TRANSLATOR_PUNCTUATION_OPTIONS,
 } from "./translationOptions";
 
 type Mode = "grammar" | "translator";
@@ -20,12 +26,21 @@ const MODE_LABELS: Record<Mode, string> = {
 
 const SOURCE_VALUES = SOURCE_LANGUAGE_OPTIONS.map((o) => o.value);
 const TARGET_VALUES = TARGET_LANGUAGE_OPTIONS.map((o) => o.value);
+const TRANSLATOR_PUNCT_VALUES = TRANSLATOR_PUNCTUATION_OPTIONS.map((o) => o.value);
 
 function App() {
   const [text, setText] = useState("");
   const [model, setModel] = useState(() => {
     try {
       if (typeof window !== "undefined") {
+        const storedMode = localStorage.getItem(TRANSLATOR_STORAGE_KEYS.mode);
+        if (storedMode === "translator") {
+          return (
+            localStorage.getItem(TRANSLATOR_STORAGE_KEYS.translatorDefaultModel) ||
+            localStorage.getItem("defaultModel") ||
+            "gemma3"
+          );
+        }
         return localStorage.getItem("defaultModel") || "gemma3";
       }
     } catch {}
@@ -119,6 +134,7 @@ function App() {
       endpoint = "translate-stream";
       let maxParagraphs = DEFAULT_TRANSLATOR_MAX_PARAGRAPHS;
       let maxChars = DEFAULT_TRANSLATOR_MAX_CHARS;
+      let punctuationStyle: TranslatorPunctuationStyle = "unchanged";
       try {
         if (typeof window !== "undefined") {
           const storedParas = Number(localStorage.getItem(TRANSLATOR_STORAGE_KEYS.translatorMaxParagraphs));
@@ -126,14 +142,21 @@ function App() {
             maxParagraphs = Math.max(1, Math.floor(storedParas));
           }
           const storedChars = Number(localStorage.getItem(TRANSLATOR_STORAGE_KEYS.translatorMaxChars));
-          if (Number.isFinite(storedChars) && storedChars > 0) {
+          if (Number.isFinite(storedChars) && storedChars >= 0) {
             maxChars = Math.max(0, Math.floor(storedChars));
+          }
+          const storedPunctuation = localStorage.getItem(
+            TRANSLATOR_STORAGE_KEYS.translatorPunctuationStyle,
+          ) as TranslatorPunctuationStyle | null;
+          if (storedPunctuation && TRANSLATOR_PUNCT_VALUES.includes(storedPunctuation)) {
+            punctuationStyle = storedPunctuation;
           }
         }
       } catch {}
       payload.options = {
         sourceLang,
         targetLang,
+        punctuationStyle,
         chunking: {
           maxParagraphs,
           maxChars,
@@ -233,6 +256,22 @@ function App() {
   useEffect(() => {
     try {
       if (typeof window !== "undefined") {
+        if (mode === "translator") {
+          const storedTranslatorModel = localStorage.getItem(TRANSLATOR_STORAGE_KEYS.translatorDefaultModel);
+          if (storedTranslatorModel) {
+            setModel(storedTranslatorModel);
+            return;
+          }
+        }
+        const storedGrammarModel = localStorage.getItem("defaultModel");
+        if (storedGrammarModel) setModel(storedGrammarModel);
+      }
+    } catch {}
+  }, [mode]);
+
+  useEffect(() => {
+    try {
+      if (typeof window !== "undefined") {
         localStorage.setItem(TRANSLATOR_STORAGE_KEYS.translatorSource, sourceLang);
       }
     } catch {}
@@ -297,6 +336,17 @@ function App() {
     : "No result to copy";
   const completedCount = outputParas.filter((entry) => entry.trim().length > 0).length;
   const progressLabel = mode === "grammar" ? "Progress" : "Translation progress";
+  const originalParas = text.split(/\n\s*\n+/).filter(Boolean);
+  const translatorRows = Math.max(originalParas.length, outputParas.length);
+  const translatorLeftParas = Array.from({ length: translatorRows }, (_, idx) => originalParas[idx] ?? "");
+  const translatorRightParas = Array.from({ length: translatorRows }, (_, idx) => {
+    const value = outputParas[idx];
+    if (value && value.trim().length > 0) return value;
+    if (isProcessing && idx < originalParas.length) return "…";
+    return "";
+  });
+  const hasTranslatorContent =
+    translatorRows > 0 && (text.trim().length > 0 || translatorRightParas.some((p) => p.trim().length > 0));
 
   const handleCopy = async () => {
     if (!outputText) return;
@@ -365,6 +415,7 @@ function App() {
           <option value="deepseek-v3.1:671b-cloud">DeepSeek 671B (Cloud)</option>
           <option value="gpt-oss:120b-cloud">GPT-OSS 120B (Cloud)</option>
           <option value="llama3.2">Llama 3.2 3B</option>
+          <option value="llama2-uncensored">Llama 2 7B</option>
           <option value="deepseek-llm">DeepSeek 7B</option>
           <option value="mistral">Mistral 7B</option>
           <option value="thinkverse/towerinstruct:latest">TowerInstruct 7B</option>
@@ -418,6 +469,23 @@ function App() {
         onSaved={() => {
           // force a health refresh quickly after saving
           setServerReady(false);
+          try {
+            if (typeof window !== "undefined") {
+              if (mode === "translator") {
+                const storedTranslatorModel = localStorage.getItem(TRANSLATOR_STORAGE_KEYS.translatorDefaultModel);
+                if (storedTranslatorModel) {
+                  setModel(storedTranslatorModel);
+                  return;
+                }
+              } else {
+                const storedGrammarModel = localStorage.getItem("defaultModel");
+                if (storedGrammarModel) {
+                  setModel(storedGrammarModel);
+                  return;
+                }
+              }
+            }
+          } catch {}
         }}
       />
 
@@ -486,19 +554,15 @@ function App() {
         </div>
       )}
 
-      {mode === "translator" && outputText && (
+      {mode === "translator" && hasTranslatorContent && (
         <div style={{ marginTop: "2rem" }}>
           <h2>Translation</h2>
-          <div className="translation-view">
-            <div className="translation-column">
-              <h3>Original</h3>
-              <div className="translation-body">{text || "(no input)"}</div>
-            </div>
-            <div className="translation-column">
-              <h3>Translated</h3>
-              <div className="translation-body">{outputText}</div>
-            </div>
-          </div>
+          <AlignedParagraphs
+            leftTitle="Original"
+            rightTitle="Translated"
+            leftParagraphs={translatorLeftParas}
+            rightParagraphs={translatorRightParas}
+          />
         </div>
       )}
 
@@ -519,7 +583,4 @@ function App() {
 }
 
 export default App;
-
-
-
 

@@ -1,11 +1,16 @@
 import React, { useEffect, useState } from "react";
-import type { TranslatorSourceLanguage, TranslatorTargetLanguage } from "./translationOptions";
+import type {
+  TranslatorPunctuationStyle,
+  TranslatorSourceLanguage,
+  TranslatorTargetLanguage,
+} from "./translationOptions";
 import {
   SOURCE_LANGUAGE_OPTIONS,
   TARGET_LANGUAGE_OPTIONS,
   DEFAULT_TRANSLATOR_MAX_PARAGRAPHS,
   DEFAULT_TRANSLATOR_MAX_CHARS,
   STORAGE_KEYS as TRANSLATOR_STORAGE_KEYS,
+  TRANSLATOR_PUNCTUATION_OPTIONS,
 } from "./translationOptions";
 
 type Config = {
@@ -37,6 +42,8 @@ const Settings: React.FC<SettingsProps> = ({ open, onClose, onSaved }) => {
   const [spellingVariant, setSpellingVariant] = useState<string>("en-US");
   const [translatorSource, setTranslatorSource] = useState<TranslatorSourceLanguage>("auto");
   const [translatorTarget, setTranslatorTarget] = useState<TranslatorTargetLanguage>("english");
+  const [translatorDefaultModel, setTranslatorDefaultModel] = useState<string>("gemma3");
+  const [translatorPunctuation, setTranslatorPunctuation] = useState<TranslatorPunctuationStyle>("unchanged");
   const [translatorMaxParagraphs, setTranslatorMaxParagraphs] = useState<number>(DEFAULT_TRANSLATOR_MAX_PARAGRAPHS);
   const [translatorMaxChars, setTranslatorMaxChars] = useState<number>(DEFAULT_TRANSLATOR_MAX_CHARS);
 
@@ -82,6 +89,17 @@ const Settings: React.FC<SettingsProps> = ({ open, onClose, onSaved }) => {
         if (savedTarget && TARGET_LANGUAGE_OPTIONS.some((opt) => opt.value === savedTarget)) {
           setTranslatorTarget(savedTarget);
         }
+        const savedTranslatorModel = localStorage.getItem(TRANSLATOR_STORAGE_KEYS.translatorDefaultModel);
+        if (savedTranslatorModel) setTranslatorDefaultModel(savedTranslatorModel);
+        const savedTranslatorPunctuation = localStorage.getItem(
+          TRANSLATOR_STORAGE_KEYS.translatorPunctuationStyle,
+        ) as TranslatorPunctuationStyle | null;
+        if (
+          savedTranslatorPunctuation &&
+          TRANSLATOR_PUNCTUATION_OPTIONS.some((opt) => opt.value === savedTranslatorPunctuation)
+        ) {
+          setTranslatorPunctuation(savedTranslatorPunctuation);
+        }
         const savedMaxParas = Number(localStorage.getItem(TRANSLATOR_STORAGE_KEYS.translatorMaxParagraphs));
         if (Number.isFinite(savedMaxParas) && savedMaxParas > 0) {
           setTranslatorMaxParagraphs(Math.max(1, Math.floor(savedMaxParas)));
@@ -123,12 +141,24 @@ const Settings: React.FC<SettingsProps> = ({ open, onClose, onSaved }) => {
           localStorage.setItem("spellingVariant", spellingVariant);
           const normalizedSource = translatorSource;
           const normalizedTarget = translatorTarget;
-          const normalizedMaxParas = Math.max(1, Math.floor(Number.isFinite(translatorMaxParagraphs) ? translatorMaxParagraphs : DEFAULT_TRANSLATOR_MAX_PARAGRAPHS));
-          const normalizedMaxChars = Math.max(0, Math.floor(Number.isFinite(translatorMaxChars) ? translatorMaxChars : DEFAULT_TRANSLATOR_MAX_CHARS));
+          const normalizedModel = translatorDefaultModel;
+          const normalizedPunctuation = translatorPunctuation;
+          const normalizedMaxParas = Math.max(
+            1,
+            Math.floor(
+              Number.isFinite(translatorMaxParagraphs) ? translatorMaxParagraphs : DEFAULT_TRANSLATOR_MAX_PARAGRAPHS,
+            ),
+          );
+          const normalizedMaxChars = Math.max(
+            0,
+            Math.floor(Number.isFinite(translatorMaxChars) ? translatorMaxChars : DEFAULT_TRANSLATOR_MAX_CHARS),
+          );
           setTranslatorMaxParagraphs(normalizedMaxParas);
           setTranslatorMaxChars(normalizedMaxChars);
           localStorage.setItem(TRANSLATOR_STORAGE_KEYS.translatorSource, normalizedSource);
           localStorage.setItem(TRANSLATOR_STORAGE_KEYS.translatorTarget, normalizedTarget);
+          localStorage.setItem(TRANSLATOR_STORAGE_KEYS.translatorDefaultModel, normalizedModel);
+          localStorage.setItem(TRANSLATOR_STORAGE_KEYS.translatorPunctuationStyle, normalizedPunctuation);
           localStorage.setItem(TRANSLATOR_STORAGE_KEYS.translatorMaxParagraphs, String(normalizedMaxParas));
           localStorage.setItem(TRANSLATOR_STORAGE_KEYS.translatorMaxChars, String(normalizedMaxChars));
         }
@@ -270,6 +300,19 @@ const Settings: React.FC<SettingsProps> = ({ open, onClose, onSaved }) => {
 
           {activeTab === "translator" && (
             <div className="modal-grid" role="tabpanel">
+              <label className="form-row" style={{ gridColumn: "1 / -1" }}>
+                <span>Default Model</span>
+                <select value={translatorDefaultModel} onChange={(e) => setTranslatorDefaultModel(e.target.value)}>
+                  <option value="gemma3">Gemma 3 4B</option>
+                  <option value="deepseek-v3.1:671b-cloud">DeepSeek 671B (Cloud)</option>
+                  <option value="gpt-oss:120b-cloud">GPT-OSS 120B (Cloud)</option>
+                  <option value="llama3.2">Llama 3.2 3B</option>
+                  <option value="llama2-uncensored">Llama 2 7B</option>
+                  <option value="deepseek-llm">DeepSeek 7B</option>
+                  <option value="mistral">Mistral 7B</option>
+                  <option value="thinkverse/towerinstruct:latest">TowerInstruct 7B</option>
+                </select>
+              </label>
               <label className="form-row">
                 <span>Default Source Language</span>
                 <select value={translatorSource} onChange={(e) => setTranslatorSource(e.target.value as TranslatorSourceLanguage)}>
@@ -308,8 +351,18 @@ const Settings: React.FC<SettingsProps> = ({ open, onClose, onSaved }) => {
                   onChange={(e) => setTranslatorMaxChars(Math.max(0, Number(e.target.value) || 0))}
                 />
               </label>
+              <label className="form-row">
+                <span>Punctuation Style</span>
+                <select value={translatorPunctuation} onChange={(e) => setTranslatorPunctuation(e.target.value as TranslatorPunctuationStyle)}>
+                  {TRANSLATOR_PUNCTUATION_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
               <div style={{ gridColumn: "1 / -1", color: "#6b7280", fontSize: "0.9rem" }}>
-                These defaults apply when using translator mode and determine chunk size for context.
+                These defaults apply when using translator mode and determine model choice, punctuation handling, and chunk size.
               </div>
             </div>
           )}
@@ -323,6 +376,7 @@ const Settings: React.FC<SettingsProps> = ({ open, onClose, onSaved }) => {
                   <option value="deepseek-v3.1:671b-cloud">DeepSeek 671B (Cloud)</option>
                   <option value="gpt-oss:120b-cloud">GPT-OSS 120B (Cloud)</option>
                   <option value="llama3.2">Llama 3.2 3B</option>
+                  <option value="llama2-uncensored">Llama 2 7B</option>
                   <option value="deepseek-llm">DeepSeek 7B</option>
                   <option value="mistral">Mistral 7B</option>
                   <option value="thinkverse/towerinstruct:latest">TowerInstruct 7B</option>

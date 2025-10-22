@@ -1,5 +1,6 @@
 export type TranslatorSourceLanguage = "auto" | "english" | "hungarian" | "japanese";
 export type TranslatorTargetLanguage = "english" | "hungarian" | "japanese";
+export type TranslatorPunctuationStyle = "unchanged" | "auto" | "simple" | "smart";
 
 export const SOURCE_LANGUAGE_OPTIONS: Array<{ value: TranslatorSourceLanguage; label: string }> = [
   { value: "auto", label: "Auto" },
@@ -14,6 +15,13 @@ export const TARGET_LANGUAGE_OPTIONS: Array<{ value: TranslatorTargetLanguage; l
   { value: "japanese", label: "Japanese" },
 ];
 
+export const TRANSLATOR_PUNCTUATION_OPTIONS: Array<{ value: TranslatorPunctuationStyle; label: string }> = [
+  { value: "unchanged", label: "Preserve punctuation" },
+  { value: "auto", label: "Auto" },
+  { value: "simple", label: "Simple ASCII" },
+  { value: "smart", label: "Typographic" },
+];
+
 export const DEFAULT_TRANSLATOR_MAX_PARAGRAPHS = 3;
 export const DEFAULT_TRANSLATOR_MAX_CHARS = 1500;
 
@@ -23,4 +31,6 @@ export const STORAGE_KEYS = {
   translatorTarget: "translatorTargetLanguage",
   translatorMaxParagraphs: "translatorMaxParagraphs",
   translatorMaxChars: "translatorMaxChars",
+  translatorDefaultModel: "translatorDefaultModel",
+  translatorPunctuationStyle: "translatorPunctuationStyle",
 };
