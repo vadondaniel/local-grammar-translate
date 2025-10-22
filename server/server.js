@@ -213,7 +213,7 @@ app.post("/api/config", (req, res) => {
 });
 
 app.post("/api/fix-stream", async (req, res) => {
-  const { text, model } = req.body;
+  const { text, model, options: rawOptions } = req.body;
   const usedModel = model || DEFAULT_MODEL;
   if (!text) return res.status(400).json({ error: "No text provided." });
 
@@ -240,6 +240,32 @@ app.post("/api/fix-stream", async (req, res) => {
     let inFlight = 0;
     const results = new Array(total);
 
+    // Normalize options
+    const opts = Object.assign(
+      { tone: "neutral", strictness: "balanced", punctuationStyle: "simple" },
+      typeof rawOptions === "object" && rawOptions ? rawOptions : {}
+    );
+    const allowedTones = new Set(["neutral", "formal", "friendly", "academic", "technical"]);
+    const allowedStrict = new Set(["lenient", "balanced", "strict"]);
+    const allowedPunct = new Set(["simple", "smart"]);
+    if (!allowedTones.has(String(opts.tone))) opts.tone = "neutral";
+    if (!allowedStrict.has(String(opts.strictness))) opts.strictness = "balanced";
+    if (!allowedPunct.has(String(opts.punctuationStyle))) opts.punctuationStyle = "simple";
+
+    const strictGuide =
+      opts.strictness === "strict"
+        ? "Be strict: fix all grammar, style and clarity issues."
+        : opts.strictness === "lenient"
+          ? "Be lenient: fix only clear grammar errors."
+          : "Be balanced: fix obvious grammar errors and light clarity issues.";
+
+    const punctuationGuide =
+      opts.punctuationStyle === "smart"
+        ? "Use typographic punctuation: smart quotes (“ ” ‘ ’), proper dashes (– —) and ellipsis (…)."
+        : "Use simple ASCII punctuation only: straight quotes (\" '), hyphen (-), three dots (...).";
+
+    const toneGuide = opts.tone === "neutral" ? "Keep tone neutral." : `Target tone: ${opts.tone}.`;
+
     const emitReady = async () => {
       // Emit in order as far as we can
       while (nextToEmit < total && results[nextToEmit]) {
@@ -257,10 +283,13 @@ app.post("/api/fix-stream", async (req, res) => {
         const i = nextToStart++;
         const para = paragraphs[i].trim();
         const prompt = `
-Correct the grammar of the following paragraph, if necessary.
+You are a grammar correction assistant.
 - Keep the original meaning and style.
-- Do NOT include explanations, commentary, or extra text.
-- Only output the corrected text.
+- ${toneGuide}
+- ${strictGuide}
+- ${punctuationGuide}
+- Do NOT include explanations, commentary, quotes around the output, or extra text.
+- Only output the corrected paragraph.
 
 Paragraph:
 ${para}

@@ -5,7 +5,14 @@ import Settings from "./Settings";
 
 function App() {
   const [text, setText] = useState("");
-  const [model, setModel] = useState("gemma3");
+  const [model, setModel] = useState(() => {
+    try {
+      if (typeof window !== "undefined") {
+        return localStorage.getItem("defaultModel") || "gemma3";
+      }
+    } catch {}
+    return "gemma3";
+  });
 
   const [isProcessing, setIsProcessing] = useState(false);
   const [serverReady, setServerReady] = useState(false);
@@ -29,10 +36,22 @@ function App() {
     setTotalParagraphs(total);
 
     try {
+      // Load grammar options from localStorage at submit time
+      let tone = "neutral";
+      let strictness = "balanced";
+      let punctuationStyle = "simple";
+      try {
+        if (typeof window !== "undefined") {
+          tone = localStorage.getItem("grammarTone") || tone;
+          strictness = localStorage.getItem("grammarStrictness") || strictness;
+          punctuationStyle = localStorage.getItem("punctuationStyle") || punctuationStyle;
+        }
+      } catch {}
+
       const res = await fetch("http://localhost:3001/api/fix-stream", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text, model }),
+        body: JSON.stringify({ text, model, options: { tone, strictness, punctuationStyle } }),
       });
 
       // Handle server errors (e.g., Ollama not running)
