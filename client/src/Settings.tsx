@@ -25,6 +25,7 @@ const Settings: React.FC<SettingsProps> = ({ open, onClose, onSaved }) => {
   const [tone, setTone] = useState<string>("neutral");
   const [strictness, setStrictness] = useState<string>("balanced");
   const [punctuationStyle, setPunctuationStyle] = useState<string>("simple");
+  const [units, setUnits] = useState<string>("unchanged");
 
   useEffect(() => {
     if (!open) return;
@@ -56,6 +57,8 @@ const Settings: React.FC<SettingsProps> = ({ open, onClose, onSaved }) => {
         if (savedTone) setTone(savedTone);
         if (savedStrictness) setStrictness(savedStrictness);
         if (savedPunct) setPunctuationStyle(savedPunct);
+        const savedUnits = localStorage.getItem("unitsPreference");
+        if (savedUnits) setUnits(savedUnits);
       }
     } catch {}
     return () => { active = false; };
@@ -85,6 +88,7 @@ const Settings: React.FC<SettingsProps> = ({ open, onClose, onSaved }) => {
           localStorage.setItem("grammarTone", tone);
           localStorage.setItem("grammarStrictness", strictness);
           localStorage.setItem("punctuationStyle", punctuationStyle);
+          localStorage.setItem("unitsPreference", units);
         }
       } catch {}
 
@@ -231,6 +235,7 @@ const Settings: React.FC<SettingsProps> = ({ open, onClose, onSaved }) => {
               <label className="form-row">
                 <span>Tone</span>
                 <select value={tone} onChange={(e) => setTone(e.target.value)}>
+                  <option value="unchanged">Unchanged</option>
                   <option value="neutral">Neutral</option>
                   <option value="formal">Formal</option>
                   <option value="friendly">Friendly</option>
@@ -249,8 +254,19 @@ const Settings: React.FC<SettingsProps> = ({ open, onClose, onSaved }) => {
               <label className="form-row">
                 <span>Punctuation Style</span>
                 <select value={punctuationStyle} onChange={(e) => setPunctuationStyle(e.target.value)}>
+                  <option value="unchanged">Unchanged</option>
+                  <option value="auto">Auto</option>
                   <option value="simple">Simple ASCII (" ' - ...)</option>
                   <option value="smart">Typographic (“ ” ‘ ’ – — …)</option>
+                </select>
+              </label>
+              <label className="form-row">
+                <span>Units</span>
+                <select value={units} onChange={(e) => setUnits(e.target.value)}>
+                  <option value="unchanged">Unchanged</option>
+                  <option value="metric">Metric (SI)</option>
+                  <option value="imperial">Imperial/US</option>
+                  <option value="auto">Auto</option>
                 </select>
               </label>
               <div style={{ gridColumn: "1 / -1", color: "#6b7280", fontSize: "0.9rem" }}>

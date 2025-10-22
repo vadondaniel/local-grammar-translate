@@ -242,15 +242,17 @@ app.post("/api/fix-stream", async (req, res) => {
 
     // Normalize options
     const opts = Object.assign(
-      { tone: "neutral", strictness: "balanced", punctuationStyle: "simple" },
+      { tone: "neutral", strictness: "balanced", punctuationStyle: "simple", units: "unchanged" },
       typeof rawOptions === "object" && rawOptions ? rawOptions : {}
     );
-    const allowedTones = new Set(["neutral", "formal", "friendly", "academic", "technical"]);
+    const allowedTones = new Set(["unchanged", "neutral", "formal", "friendly", "academic", "technical"]);
     const allowedStrict = new Set(["lenient", "balanced", "strict"]);
-    const allowedPunct = new Set(["simple", "smart"]);
+    const allowedPunct = new Set(["unchanged", "auto", "simple", "smart"]);
+    const allowedUnits = new Set(["unchanged", "metric", "imperial", "auto"]);
     if (!allowedTones.has(String(opts.tone))) opts.tone = "neutral";
     if (!allowedStrict.has(String(opts.strictness))) opts.strictness = "balanced";
     if (!allowedPunct.has(String(opts.punctuationStyle))) opts.punctuationStyle = "simple";
+    if (!allowedUnits.has(String(opts.units))) opts.units = "unchanged";
 
     const strictGuide =
       opts.strictness === "strict"
@@ -262,9 +264,27 @@ app.post("/api/fix-stream", async (req, res) => {
     const punctuationGuide =
       opts.punctuationStyle === "smart"
         ? "Use typographic punctuation: smart quotes (“ ” ‘ ’), proper dashes (– —) and ellipsis (…)."
-        : "Use simple ASCII punctuation only: straight quotes (\" '), hyphen (-), three dots (...).";
+        : opts.punctuationStyle === "unchanged"
+          ? "Preserve the original punctuation style; do not convert quotes or dashes."
+          : opts.punctuationStyle === "auto"
+            ? "Choose a consistent punctuation style; prefer typographic if the text warrants it."
+            : "Use simple ASCII punctuation only: straight quotes (\" '), hyphen (-), three dots (...).";
 
-    const toneGuide = opts.tone === "neutral" ? "Keep tone neutral." : `Target tone: ${opts.tone}.`;
+    const toneGuide =
+      opts.tone === "unchanged"
+        ? "Do not alter the tone."
+        : opts.tone === "neutral"
+          ? "Keep tone neutral."
+          : `Target tone: ${opts.tone}.`;
+
+    const unitsGuide =
+      opts.units === "metric"
+        ? "Convert all measurement units to SI/metric (e.g., miles→kilometres, °F→°C, pounds→kilograms)."
+        : opts.units === "imperial"
+          ? "Convert all measurement units to Imperial/US customary (e.g., kilometres→miles, °C→°F, kilograms→pounds)."
+          : opts.units === "auto"
+            ? "Choose a consistent unit system based on context; avoid mixing systems."
+            : "Preserve the original measurement units.";
 
     const emitReady = async () => {
       // Emit in order as far as we can
@@ -288,6 +308,7 @@ You are a grammar correction assistant.
 - ${toneGuide}
 - ${strictGuide}
 - ${punctuationGuide}
+- ${unitsGuide}
 - Do NOT include explanations, commentary, quotes around the output, or extra text.
 - Only output the corrected paragraph.
 

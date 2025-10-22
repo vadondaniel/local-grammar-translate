@@ -39,19 +39,21 @@ function App() {
       // Load grammar options from localStorage at submit time
       let tone = "neutral";
       let strictness = "balanced";
-      let punctuationStyle = "simple";
+      let punctuationStyle = "unchanged";
+      let units = "unchanged";
       try {
         if (typeof window !== "undefined") {
           tone = localStorage.getItem("grammarTone") || tone;
           strictness = localStorage.getItem("grammarStrictness") || strictness;
           punctuationStyle = localStorage.getItem("punctuationStyle") || punctuationStyle;
+          units = localStorage.getItem("unitsPreference") || units;
         }
       } catch {}
 
       const res = await fetch("http://localhost:3001/api/fix-stream", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text, model, options: { tone, strictness, punctuationStyle } }),
+        body: JSON.stringify({ text, model, options: { tone, strictness, punctuationStyle, units } }),
       });
 
       // Handle server errors (e.g., Ollama not running)
