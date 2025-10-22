@@ -26,14 +26,15 @@ interface SettingsProps {
   open: boolean;
   onClose: () => void;
   onSaved?: (cfg: Config) => void;
+  initialTab?: "grammar" | "translator" | "server";
 }
 
-const Settings: React.FC<SettingsProps> = ({ open, onClose, onSaved }) => {
+const Settings: React.FC<SettingsProps> = ({ open, onClose, onSaved, initialTab = "grammar" }) => {
   const [cfg, setCfg] = useState<Config | null>(null);
   const [persist, setPersist] = useState(true);
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"grammar" | "translator" | "server">("grammar");
+  const [activeTab, setActiveTab] = useState<"grammar" | "translator" | "server">(initialTab);
   const [defaultModel, setDefaultModel] = useState<string>("gemma3");
   const [tone, setTone] = useState<string>("neutral");
   const [strictness, setStrictness] = useState<string>("balanced");
@@ -46,6 +47,12 @@ const Settings: React.FC<SettingsProps> = ({ open, onClose, onSaved }) => {
   const [translatorPunctuation, setTranslatorPunctuation] = useState<TranslatorPunctuationStyle>("unchanged");
   const [translatorMaxParagraphs, setTranslatorMaxParagraphs] = useState<number>(DEFAULT_TRANSLATOR_MAX_PARAGRAPHS);
   const [translatorMaxChars, setTranslatorMaxChars] = useState<number>(DEFAULT_TRANSLATOR_MAX_CHARS);
+
+  useEffect(() => {
+    if (open) {
+      setActiveTab(initialTab);
+    }
+  }, [open, initialTab]);
 
   useEffect(() => {
     if (!open) return;
@@ -445,4 +452,3 @@ const Settings: React.FC<SettingsProps> = ({ open, onClose, onSaved }) => {
 };
 
 export default Settings;
-

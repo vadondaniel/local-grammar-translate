@@ -89,6 +89,11 @@ function App() {
   const [copied, setCopied] = useState(false);
   const copyTimerRef = useRef<number | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [initialSettingsTab, setInitialSettingsTab] = useState<"grammar" | "translator" | "server">("grammar");
+
+  useEffect(() => {
+    setInitialSettingsTab(mode === "translator" ? "translator" : "grammar");
+  }, [mode]);
 
   const handleSubmit = async () => {
     setIsProcessing(true);
@@ -453,7 +458,10 @@ function App() {
 
         <button
           className="btn-secondary btn-icon"
-          onClick={() => setSettingsOpen((v) => !v)}
+          onClick={() => {
+            setInitialSettingsTab(mode === "translator" ? "translator" : "grammar");
+            setSettingsOpen((v) => !v);
+          }}
           title="Settings"
           aria-label="Open settings"
           type="button"
@@ -464,6 +472,7 @@ function App() {
 
       <Settings
         open={settingsOpen}
+        initialTab={initialSettingsTab}
         onClose={() => setSettingsOpen(false)}
         onSaved={() => {
           // force a health refresh quickly after saving
