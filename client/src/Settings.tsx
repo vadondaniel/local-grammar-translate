@@ -20,7 +20,7 @@ const Settings: React.FC<SettingsProps> = ({ open, onClose, onSaved }) => {
   const [persist, setPersist] = useState(true);
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"grammar" | "server">("server");
+  const [activeTab, setActiveTab] = useState<"grammar" | "server">("grammar");
   const [defaultModel, setDefaultModel] = useState<string>("gemma3");
   const [tone, setTone] = useState<string>("neutral");
   const [strictness, setStrictness] = useState<string>("balanced");
@@ -287,9 +287,11 @@ const Settings: React.FC<SettingsProps> = ({ open, onClose, onSaved }) => {
           )}
         </div>
         <div className="modal-actions">
+          <div aria-live="polite" style={{ marginRight: "auto", minHeight: "1.2em", color: "#4b5563" }}>
+            {status || " "}
+          </div>
           <button onClick={save} disabled={saving || (!cfg && activeTab === "server")}>{saving ? "Saving." : "Save"}</button>
           <button className="btn-secondary" onClick={close}>Cancel</button>
-          {status && <span style={{ color: "#4b5563" }}>{status}</span>}
         </div>
       </div>
     </div>
