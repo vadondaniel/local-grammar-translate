@@ -20,12 +20,13 @@ const Settings: React.FC<SettingsProps> = ({ open, onClose, onSaved }) => {
   const [persist, setPersist] = useState(true);
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"grammar" | "server">("grammar");
+  const [activeTab, setActiveTab] = useState<"grammar" | "server">("server");
   const [defaultModel, setDefaultModel] = useState<string>("gemma3");
   const [tone, setTone] = useState<string>("neutral");
   const [strictness, setStrictness] = useState<string>("balanced");
   const [punctuationStyle, setPunctuationStyle] = useState<string>("simple");
   const [units, setUnits] = useState<string>("unchanged");
+  const [spellingVariant, setSpellingVariant] = useState<string>("en-US");
 
   useEffect(() => {
     if (!open) return;
@@ -59,6 +60,8 @@ const Settings: React.FC<SettingsProps> = ({ open, onClose, onSaved }) => {
         if (savedPunct) setPunctuationStyle(savedPunct);
         const savedUnits = localStorage.getItem("unitsPreference");
         if (savedUnits) setUnits(savedUnits);
+        const savedSpelling = localStorage.getItem("spellingVariant");
+        if (savedSpelling) setSpellingVariant(savedSpelling);
       }
     } catch {}
     return () => { active = false; };
@@ -89,6 +92,7 @@ const Settings: React.FC<SettingsProps> = ({ open, onClose, onSaved }) => {
           localStorage.setItem("grammarStrictness", strictness);
           localStorage.setItem("punctuationStyle", punctuationStyle);
           localStorage.setItem("unitsPreference", units);
+          localStorage.setItem("spellingVariant", spellingVariant);
         }
       } catch {}
 
@@ -235,7 +239,6 @@ const Settings: React.FC<SettingsProps> = ({ open, onClose, onSaved }) => {
               <label className="form-row">
                 <span>Tone</span>
                 <select value={tone} onChange={(e) => setTone(e.target.value)}>
-                  <option value="unchanged">Unchanged</option>
                   <option value="neutral">Neutral</option>
                   <option value="formal">Formal</option>
                   <option value="friendly">Friendly</option>
@@ -269,6 +272,14 @@ const Settings: React.FC<SettingsProps> = ({ open, onClose, onSaved }) => {
                   <option value="auto">Auto</option>
                 </select>
               </label>
+              <label className="form-row">
+                <span>Spelling (English)</span>
+                <select value={spellingVariant} onChange={(e) => setSpellingVariant(e.target.value)}>
+                  <option value="unchanged">Unchanged</option>
+                  <option value="en-US">English (US)</option>
+                  <option value="en-GB">English (UK)</option>
+                </select>
+              </label>
               <div style={{ gridColumn: "1 / -1", color: "#6b7280", fontSize: "0.9rem" }}>
                 These preferences are applied when fixing text and are remembered on refresh.
               </div>
@@ -276,9 +287,9 @@ const Settings: React.FC<SettingsProps> = ({ open, onClose, onSaved }) => {
           )}
         </div>
         <div className="modal-actions">
-          {status && <span style={{ color: "#4b5563" }}>{status}</span>}
           <button onClick={save} disabled={saving || (!cfg && activeTab === "server")}>{saving ? "Saving." : "Save"}</button>
           <button className="btn-secondary" onClick={close}>Cancel</button>
+          {status && <span style={{ color: "#4b5563" }}>{status}</span>}
         </div>
       </div>
     </div>

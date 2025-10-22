@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import "./App.css";
 import InlineDiff from "./InlineDiff";
-import Settings from "./Settings";
+import Settings from "./Settings.tsx";
 
 function App() {
   const [text, setText] = useState("");
@@ -41,19 +41,21 @@ function App() {
       let strictness = "balanced";
       let punctuationStyle = "unchanged";
       let units = "unchanged";
+      let spellingVariant = "en-US";
       try {
         if (typeof window !== "undefined") {
           tone = localStorage.getItem("grammarTone") || tone;
           strictness = localStorage.getItem("grammarStrictness") || strictness;
           punctuationStyle = localStorage.getItem("punctuationStyle") || punctuationStyle;
           units = localStorage.getItem("unitsPreference") || units;
+          spellingVariant = localStorage.getItem("spellingVariant") || spellingVariant;
         }
       } catch {}
 
       const res = await fetch("http://localhost:3001/api/fix-stream", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text, model, options: { tone, strictness, punctuationStyle, units } }),
+        body: JSON.stringify({ text, model, options: { tone, strictness, punctuationStyle, units, spellingVariant } }),
       });
 
       // Handle server errors (e.g., Ollama not running)

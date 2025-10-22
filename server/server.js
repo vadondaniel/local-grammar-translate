@@ -242,17 +242,19 @@ app.post("/api/fix-stream", async (req, res) => {
 
     // Normalize options
     const opts = Object.assign(
-      { tone: "neutral", strictness: "balanced", punctuationStyle: "simple", units: "unchanged" },
+      { tone: "neutral", strictness: "balanced", punctuationStyle: "unchanged", units: "unchanged", spellingVariant: "en-US" },
       typeof rawOptions === "object" && rawOptions ? rawOptions : {}
     );
-    const allowedTones = new Set(["unchanged", "neutral", "formal", "friendly", "academic", "technical"]);
+    const allowedTones = new Set(["neutral", "formal", "friendly", "academic", "technical"]);
     const allowedStrict = new Set(["lenient", "balanced", "strict"]);
     const allowedPunct = new Set(["unchanged", "auto", "simple", "smart"]);
     const allowedUnits = new Set(["unchanged", "metric", "imperial", "auto"]);
+    const allowedSpelling = new Set(["unchanged", "en-US", "en-GB"]);
     if (!allowedTones.has(String(opts.tone))) opts.tone = "neutral";
     if (!allowedStrict.has(String(opts.strictness))) opts.strictness = "balanced";
-    if (!allowedPunct.has(String(opts.punctuationStyle))) opts.punctuationStyle = "simple";
+    if (!allowedPunct.has(String(opts.punctuationStyle))) opts.punctuationStyle = "unchanged";
     if (!allowedUnits.has(String(opts.units))) opts.units = "unchanged";
+    if (!allowedSpelling.has(String(opts.spellingVariant))) opts.spellingVariant = "en-US";
 
     const strictGuide =
       opts.strictness === "strict"
@@ -263,27 +265,32 @@ app.post("/api/fix-stream", async (req, res) => {
 
     const punctuationGuide =
       opts.punctuationStyle === "smart"
-        ? "Use typographic punctuation: smart quotes (“ ” ‘ ’), proper dashes (– —) and ellipsis (…)."
+        ? "Use typographic punctuation appropriate to the text’s language (proper quotation marks, dashes, and ellipsis)."
         : opts.punctuationStyle === "unchanged"
-          ? "Preserve the original punctuation style; do not convert quotes or dashes."
+          ? "Preserve the original punctuation style; do not convert quotation marks or dashes."
           : opts.punctuationStyle === "auto"
-            ? "Choose a consistent punctuation style; prefer typographic if the text warrants it."
-            : "Use simple ASCII punctuation only: straight quotes (\" '), hyphen (-), three dots (...).";
+            ? "Choose a consistent punctuation style appropriate to the text’s language."
+            : "Use simple ASCII punctuation only (straight quotes, hyphen, three dots).";
 
     const toneGuide =
-      opts.tone === "unchanged"
-        ? "Do not alter the tone."
-        : opts.tone === "neutral"
-          ? "Keep tone neutral."
-          : `Target tone: ${opts.tone}.`;
+      opts.tone === "neutral"
+        ? "Keep tone neutral."
+        : `Target tone: ${opts.tone}.`;
+
+    const spellingGuide =
+      opts.spellingVariant === "unchanged"
+        ? "Keep the original language and regional spelling conventions; do not change dialect and do not translate."
+        : opts.spellingVariant === "en-US"
+          ? "Keep the original language; do not translate. If the text is English, standardize spelling to American English (US) conventions; otherwise, do not alter regional spelling."
+          : "Keep the original language; do not translate. If the text is English, standardize spelling to British English (UK) conventions; otherwise, do not alter regional spelling.";
 
     const unitsGuide =
       opts.units === "metric"
-        ? "Convert all measurement units to SI/metric (e.g., miles→kilometres, °F→°C, pounds→kilograms)."
+        ? "Convert measurement units to SI/metric, updating numbers and unit labels. Keep the original language and regional spelling; do not change dialect or translate."
         : opts.units === "imperial"
-          ? "Convert all measurement units to Imperial/US customary (e.g., kilometres→miles, °C→°F, kilograms→pounds)."
+          ? "Convert measurement units to Imperial/US customary, updating numbers and unit labels. Keep the original language and regional spelling; do not change dialect or translate."
           : opts.units === "auto"
-            ? "Choose a consistent unit system based on context; avoid mixing systems."
+            ? "Use a consistent unit system based on context; avoid mixing systems. Keep the original language and regional spelling; do not change dialect or translate."
             : "Preserve the original measurement units.";
 
     const emitReady = async () => {
@@ -305,6 +312,7 @@ app.post("/api/fix-stream", async (req, res) => {
         const prompt = `
 You are a grammar correction assistant.
 - Keep the original meaning and style.
+- ${spellingGuide}
 - ${toneGuide}
 - ${strictGuide}
 - ${punctuationGuide}
