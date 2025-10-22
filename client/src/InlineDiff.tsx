@@ -2,54 +2,78 @@ import React, { useMemo, useLayoutEffect, useRef, useState } from "react";
 import { diffWordsWithSpace, type Change } from "diff";
 
 interface InlineDiffProps {
-  oldValue: string;
-  newValue: string;
+  oldValue?: string;
+  newValue?: string;
+  oldParagraphs?: string[];
+  newParagraphs?: string[];
   leftTitle?: string;
   rightTitle?: string;
+  highlightDiff?: boolean;
 }
 
 const InlineDiff: React.FC<InlineDiffProps> = ({
-  oldValue,
-  newValue,
+  oldValue = "",
+  newValue = "",
+  oldParagraphs,
+  newParagraphs,
   leftTitle = "Original",
   rightTitle = "Corrected",
+  highlightDiff = true,
 }) => {
-  // Split inputs into paragraphs so we can align with variable spacing
-  const oldParas = useMemo(() => (oldValue || "").split(/\n\s*\n+/g), [oldValue]);
-  const newParas = useMemo(() => (newValue || "").split(/\n\s*\n+/g), [newValue]);
+  const oldParas = useMemo(() => {
+    if (oldParagraphs) return oldParagraphs;
+    return (oldValue || "").split(/\n\s*\n+/g);
+  }, [oldParagraphs, oldValue]);
+
+  const newParas = useMemo(() => {
+    if (newParagraphs) return newParagraphs;
+    return (newValue || "").split(/\n\s*\n+/g);
+  }, [newParagraphs, newValue]);
+
   const rows = Math.max(oldParas.length, newParas.length);
 
-  // Precompute per-row token diffs
+  const normalizedOld = useMemo(
+    () => Array.from({ length: rows }, (_, i) => oldParas[i] ?? ""),
+    [rows, oldParas]
+  );
+
+  const normalizedNew = useMemo(
+    () => Array.from({ length: rows }, (_, i) => newParas[i] ?? ""),
+    [rows, newParas]
+  );
+
   const rowTokens = useMemo(() => {
+    if (!highlightDiff) return [];
     const arr: Change[][] = [];
     for (let i = 0; i < rows; i++) {
-      const leftText = oldParas[i] ?? "";
-      const rightText = newParas[i] ?? "";
+      const leftText = normalizedOld[i] ?? "";
+      const rightText = normalizedNew[i] ?? "";
       arr.push(diffWordsWithSpace(leftText, rightText) as Change[]);
     }
     return arr;
-  }, [rows, oldParas, newParas]);
+  }, [rows, normalizedOld, normalizedNew, highlightDiff]);
 
-  // Refs to measure each paragraph height
   const leftRefs = useRef<Array<HTMLParagraphElement | null>>([]);
   const rightRefs = useRef<Array<HTMLParagraphElement | null>>([]);
 
-  // Extra spacers after each paragraph to match counterpart height
   const [leftExtra, setLeftExtra] = useState<number[]>([]);
   const [rightExtra, setRightExtra] = useState<number[]>([]);
 
   useLayoutEffect(() => {
-    const l: number[] = new Array(rows).fill(0);
-    const r: number[] = new Array(rows).fill(0);
-    for (let i = 0; i < rows; i++) {
-      const lh = leftRefs.current[i]?.offsetHeight ?? 0;
-      const rh = rightRefs.current[i]?.offsetHeight ?? 0;
-      if (lh < rh) l[i] = rh - lh;
-      else if (rh < lh) r[i] = lh - rh;
-    }
-    setLeftExtra(l);
-    setRightExtra(r);
-  }, [rows, rowTokens]);
+    const syncHeights = () => {
+      const l: number[] = new Array(rows).fill(0);
+      const r: number[] = new Array(rows).fill(0);
+      for (let i = 0; i < rows; i++) {
+        const lh = leftRefs.current[i]?.offsetHeight ?? 0;
+        const rh = rightRefs.current[i]?.offsetHeight ?? 0;
+        if (lh < rh) l[i] = rh - lh;
+        else if (rh < lh) r[i] = lh - rh;
+      }
+      setLeftExtra(l);
+      setRightExtra(r);
+    };
+    syncHeights();
+  }, [rows, normalizedOld, normalizedNew, rowTokens, highlightDiff]);
 
   // Recompute on resize for responsiveness
   useLayoutEffect(() => {
@@ -67,7 +91,7 @@ const InlineDiff: React.FC<InlineDiffProps> = ({
     };
     window.addEventListener("resize", handler);
     return () => window.removeEventListener("resize", handler);
-  }, [rows, rowTokens]);
+  }, [rows, normalizedOld, normalizedNew, rowTokens, highlightDiff]);
 
   const renderTokens = (
     tokens: Change[],
@@ -107,6 +131,17 @@ const InlineDiff: React.FC<InlineDiffProps> = ({
     return parts;
   };
 
+  const renderPlain = (text: string, keyPrefix: string) => {
+    if (!text) return <span>&nbsp;</span>;
+    const lines = text.split("\n");
+    return lines.map((line, idx) => (
+      <React.Fragment key={`${keyPrefix}-plain-${idx}`}>
+        {line}
+        {idx < lines.length - 1 ? <br /> : null}
+      </React.Fragment>
+    ));
+  };
+
   return (
     <div className="inline-diff">
       <div className="inline-diff-pane">
@@ -118,7 +153,9 @@ const InlineDiff: React.FC<InlineDiffProps> = ({
                 className="inline-diff-paragraph"
                 ref={(el) => { leftRefs.current[i] = el; }}
               >
-                {renderTokens(rowTokens[i] || [], "left", `l-${i}`)}
+                {highlightDiff
+                  ? renderTokens(rowTokens[i] || [], "left", `l-${i}`)
+                  : renderPlain(normalizedOld[i], `l-${i}`)}
               </p>
               {/* extra spacer to align with right side */}
               <div
@@ -139,7 +176,9 @@ const InlineDiff: React.FC<InlineDiffProps> = ({
                 className="inline-diff-paragraph"
                 ref={(el) => { rightRefs.current[i] = el; }}
               >
-                {renderTokens(rowTokens[i] || [], "right", `r-${i}`)}
+                {highlightDiff
+                  ? renderTokens(rowTokens[i] || [], "right", `r-${i}`)
+                  : renderPlain(normalizedNew[i], `r-${i}`)}
               </p>
               <div
                 className="inline-diff-spacer"

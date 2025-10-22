@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from "react";
 import "./App.css";
 import InlineDiff from "./InlineDiff";
 import Settings from "./Settings.tsx";
-import AlignedParagraphs from "./AlignedParagraphs";
 import type {
   TranslatorSourceLanguage,
   TranslatorTargetLanguage,
@@ -557,11 +556,12 @@ function App() {
       {mode === "translator" && hasTranslatorContent && (
         <div style={{ marginTop: "2rem" }}>
           <h2>Translation</h2>
-          <AlignedParagraphs
+          <InlineDiff
+            oldParagraphs={translatorLeftParas}
+            newParagraphs={translatorRightParas}
+            highlightDiff={false}
             leftTitle="Original"
             rightTitle="Translated"
-            leftParagraphs={translatorLeftParas}
-            rightParagraphs={translatorRightParas}
           />
         </div>
       )}
@@ -583,4 +583,3 @@ function App() {
 }
 
 export default App;
-
