@@ -274,6 +274,7 @@ function startOllamaServe() {
       detached: true,
       stdio: "ignore",
       shell: false,
+      windowsHide: true,
       env: {
         ...process.env,
         OLLAMA_HOST: `${CONFIG.OLLAMA_HOST}:${CONFIG.OLLAMA_PORT}`,
@@ -305,6 +306,7 @@ function runOllama(model, prompt, timeoutMs = CONFIG.OLLAMA_RUN_TIMEOUT_MS) {
     const child = spawn("ollama", args, {
       stdio: ["pipe", "pipe", "pipe"],
       shell: false,
+      windowsHide: true,
       env: {
         ...process.env,
         OLLAMA_HOST: `${CONFIG.OLLAMA_HOST}:${CONFIG.OLLAMA_PORT}`,
@@ -440,7 +442,7 @@ app.post("/api/fix-stream", async (req, res) => {
 
     const punctuationGuide =
       opts.punctuationStyle === "smart"
-        ? "Use typographic punctuation appropriate to the text’s language (proper quotation marks, dashes, and ellipsis)."
+        ? "Use typographic punctuation appropriate to the text’s language (proper quotation marks(“„”’‘’), dashes(–—), and ellipsis(…))."
         : opts.punctuationStyle === "unchanged"
           ? "Preserve the original punctuation style; do not convert quotation marks or dashes."
           : opts.punctuationStyle === "auto"
@@ -492,6 +494,7 @@ You are a grammar correction assistant.
 - ${strictGuide}
 - ${punctuationGuide}
 - ${unitsGuide}
+- If you see html elements, leave them as they are.
 - Do NOT include explanations, commentary, quotes around the output, or extra text.
 - Only output the corrected paragraph.
 
