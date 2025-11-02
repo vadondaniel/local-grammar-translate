@@ -544,13 +544,13 @@ app.post("/api/fix-stream", async (req, res) => {
 
     const punctuationGuide =
       punctuationStyle === "smart"
-        ? "Use typographic punctuation appropriate to the text's language (proper quotation marks, dashes, and ellipsis)."
+        ? "Convert straight quotation marks to typographic quotes (“ ” / ‘ ’), replace double hyphen with em dash (—), and use ellipsis (…) where appropriate."
         : punctuationStyle === "unchanged"
-          ? "Preserve the original punctuation style; do not convert quotation marks or dashes."
+          ? "Preserve the original punctuation style; do not change quotation marks, dashes, or ellipsis."
           : punctuationStyle === "auto"
-            ? "Choose a consistent punctuation style appropriate to the text's language."
+            ? "Ensure punctuation is internally consistent for the language; prefer typographic punctuation when the surrounding text supports it."
             : punctuationStyle === "simple"
-              ? "Use simple ASCII punctuation only (straight quotes, hyphen, three dots)."
+              ? "Normalize punctuation to plain ASCII: straight quotes (\" '), single hyphen (-), and three dots (...)."
               : null;
 
     const toneGuide =
