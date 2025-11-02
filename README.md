@@ -1,6 +1,10 @@
-# Grammar Checker
+# Local Chapter Grammar Checker and Translator
 
 Local-first grammar and translation workbench that keeps all language processing on your machine. The project combines a React + Vite client with an Express server that streams requests to an Ollama model for fast feedback.
+
+## Ollama in a Nutshell
+
+[Ollama](https://ollama.com/) runs large-language models locally and exposes a simple HTTP API (`ollama serve`). Once you install it and pull a model (this app defaults to `gemma3`), the server can stream grammar fixes and translations entirely on your machine. If you prefer not to download weights, Ollama also offers hosted models that end with `-cloud`; those require an Ollama account(even free) but spare your hardware from the heavy lifting. Either way, add the model ID to the project configuration and you’re ready to go.
 
 ## Features
 
@@ -10,6 +14,14 @@ Local-first grammar and translation workbench that keeps all language processing
 - Express server that can auto-start Ollama, stream incremental responses, and expose health/config endpoints.
 - Configurable concurrency, timeouts, and Ollama host/port via environment variables or `server/config.json`.
 
+## Project Configuration
+
+- `project.config.json` in the repo root drives the Express server port, Vite dev/preview port, and the model catalog shown in the UI (`id` must match the Ollama identifier; `name` is the friendly label).
+- Both the server and client read it during startup—restart your dev processes after changing the file so they reload the settings.
+- The first model in that list becomes the default for Grammar and Translator modes. Users can switch models in the toolbar or Settings modal; choices persist in `localStorage`.
+
+`server/config.json` still controls Ollama connectivity (host, port, autostart, timeouts, concurrency). Those values surface inside the Settings dialog’s **Server** tab, where you can tweak them live and optionally persist back to disk.
+
 ## Requirements
 
 - Node.js 18+ (latest LTS recommended) and npm
@@ -18,8 +30,8 @@ Local-first grammar and translation workbench that keeps all language processing
 ## Setup
 
 ```bash
-git clone <repository-url>
-cd grammar-checker
+git clone https://github.com/vadondaniel/local-grammar-translate
+cd local-grammar-translate
 npm install --prefix server
 npm install --prefix client
 ollama pull gemma3
@@ -75,7 +87,14 @@ Example `server/config.json` (one ships with the project):
 
 Set `OLLAMA_AUTOSTART` to `false` if you prefer to run `ollama serve` yourself. The server checks connectivity before every request and streams paragraph-level updates back to the client.
 
-Project-wide options live in `project.config.json`. Use it to change the Express server port, Vite dev server port, and the available Ollama models (each entry has an `id` and human-friendly `name`). Both the server and client read this file on startup, so restart your dev processes after editing it.
+### Model Selection Basics
+
+- The model dropdown in the toolbar is populated from `project.config.json`. Grammar and Translator modes share the same list.
+- Grammar mode remembers its preferred model under `defaultModel`; Translator mode uses `translatorDefaultModel`. Both are synced to `localStorage` so the app reopens with your last choice.
+- The Settings dialog lets you change these defaults (along with tone, strictness, punctuation style, units, etc.). Saving writes the selections locally and, if "Persist" is ticked, pushes server-side changes (timeouts, ports) to `server/config.json`.
+- The server always validates incoming model IDs; if a request includes a model that isn't listed, it falls back to the default from `project.config.json`.
+- Ollama offers both local models and cloud-hosted ones that end with `-cloud`. Cloud models require an Ollama account, follow the provider’s quotas, and spare your hardware from downloading or running the weights—handy if your machine struggles with larger LLMs.
+- For grammar cleanup, lightweight (~4 GB) models are usually enough, but translation—especially with larger paragraph batches—benefits from smarter (and often bigger) models. Experiment using Ollama’s model search to find grammar- or translation-focused options: <https://ollama.com/search>.
 
 ## Building for Production
 
