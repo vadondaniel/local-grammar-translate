@@ -153,7 +153,12 @@ function App() {
       let strictness = "balanced";
       let punctuationStyle = "unchanged";
       let units = "unchanged";
-      let spellingVariant = "en-US";
+      let spellingVariant = "unchanged";
+      let toneEnabled = true;
+      let strictnessEnabled = true;
+      let punctuationEnabled = true;
+      let unitsEnabled = true;
+      let spellingEnabled = false;
       try {
         if (typeof window !== "undefined") {
           tone = localStorage.getItem("grammarTone") || tone;
@@ -161,9 +166,27 @@ function App() {
           punctuationStyle = localStorage.getItem("punctuationStyle") || punctuationStyle;
           units = localStorage.getItem("unitsPreference") || units;
           spellingVariant = localStorage.getItem("spellingVariant") || spellingVariant;
+          const tonePreference = localStorage.getItem("grammarToneEnabled");
+          if (tonePreference != null) toneEnabled = tonePreference !== "false";
+          const strictPreference = localStorage.getItem("grammarStrictnessEnabled");
+          if (strictPreference != null) strictnessEnabled = strictPreference !== "false";
+          const punctPreference = localStorage.getItem("grammarPunctuationEnabled");
+          if (punctPreference != null) punctuationEnabled = punctPreference !== "false";
+          const unitsPreference = localStorage.getItem("grammarUnitsEnabled");
+          if (unitsPreference != null) unitsEnabled = unitsPreference !== "false";
+          const spellingPreference = localStorage.getItem("grammarSpellingEnabled");
+          if (spellingPreference != null) spellingEnabled = spellingPreference !== "false";
         }
       } catch {}
-      payload.options = { tone, strictness, punctuationStyle, units, spellingVariant };
+      const grammarOptions: Record<string, string> = {};
+      if (toneEnabled) grammarOptions.tone = tone;
+      if (strictnessEnabled) grammarOptions.strictness = strictness;
+      if (punctuationEnabled) grammarOptions.punctuationStyle = punctuationStyle;
+      if (unitsEnabled) grammarOptions.units = units;
+      if (spellingEnabled) grammarOptions.spellingVariant = spellingVariant;
+      if (Object.keys(grammarOptions).length > 0) {
+        payload.options = grammarOptions;
+      }
     } else {
       endpoint = "translate-stream";
       let maxParagraphs = DEFAULT_TRANSLATOR_MAX_PARAGRAPHS;

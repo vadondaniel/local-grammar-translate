@@ -298,6 +298,32 @@ label span {
   gap: 6px;
 }
 
+.form-row-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.option-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8rem;
+  color: #4b5563;
+}
+
+.option-toggle input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+}
+
+@media (prefers-color-scheme: dark) {
+  .option-toggle {
+    color: #9ca3af;
+  }
+}
+
 .form-row.inline {
   flex-direction: row;
   align-items: center;

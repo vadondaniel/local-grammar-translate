@@ -516,57 +516,69 @@ app.post("/api/fix-stream", async (req, res) => {
     const results = new Array(total);
 
     // Normalize options
-    const opts = Object.assign(
-      { tone: "neutral", strictness: "balanced", punctuationStyle: "unchanged", units: "unchanged", spellingVariant: "en-US" },
-      typeof rawOptions === "object" && rawOptions ? rawOptions : {}
-    );
     const allowedTones = new Set(["neutral", "formal", "friendly", "academic", "technical"]);
     const allowedStrict = new Set(["lenient", "balanced", "strict"]);
     const allowedPunct = new Set(["unchanged", "auto", "simple", "smart"]);
     const allowedUnits = new Set(["unchanged", "metric", "imperial", "auto"]);
     const allowedSpelling = new Set(["unchanged", "en-US", "en-GB"]);
-    if (!allowedTones.has(String(opts.tone))) opts.tone = "neutral";
-    if (!allowedStrict.has(String(opts.strictness))) opts.strictness = "balanced";
-    if (!allowedPunct.has(String(opts.punctuationStyle))) opts.punctuationStyle = "unchanged";
-    if (!allowedUnits.has(String(opts.units))) opts.units = "unchanged";
-    if (!allowedSpelling.has(String(opts.spellingVariant))) opts.spellingVariant = "en-US";
+    const rawOpts = typeof rawOptions === "object" && rawOptions ? rawOptions : {};
+    const pickOption = (value, allowed) => {
+      if (typeof value !== "string") return null;
+      return allowed.has(value) ? value : null;
+    };
+
+    const tone = pickOption(rawOpts.tone, allowedTones);
+    const strictness = pickOption(rawOpts.strictness, allowedStrict);
+    const punctuationStyle = pickOption(rawOpts.punctuationStyle, allowedPunct);
+    const units = pickOption(rawOpts.units, allowedUnits);
+    const spellingVariant = pickOption(rawOpts.spellingVariant, allowedSpelling);
 
     const strictGuide =
-      opts.strictness === "strict"
+      strictness === "strict"
         ? "Be strict: fix all grammar, style and clarity issues."
-        : opts.strictness === "lenient"
+        : strictness === "lenient"
           ? "Be lenient: fix only clear grammar errors."
-          : "Be balanced: fix obvious grammar errors and light clarity issues.";
+          : strictness === "balanced"
+            ? "Be balanced: fix obvious grammar errors and light clarity issues."
+            : null;
 
     const punctuationGuide =
-      opts.punctuationStyle === "smart"
-        ? "Use typographic punctuation appropriate to the text’s language (proper quotation marks(“„”’‘’), dashes(–—), and ellipsis(…))."
-        : opts.punctuationStyle === "unchanged"
+      punctuationStyle === "smart"
+        ? "Use typographic punctuation appropriate to the text's language (proper quotation marks, dashes, and ellipsis)."
+        : punctuationStyle === "unchanged"
           ? "Preserve the original punctuation style; do not convert quotation marks or dashes."
-          : opts.punctuationStyle === "auto"
-            ? "Choose a consistent punctuation style appropriate to the text’s language."
-            : "Use simple ASCII punctuation only (straight quotes, hyphen, three dots).";
+          : punctuationStyle === "auto"
+            ? "Choose a consistent punctuation style appropriate to the text's language."
+            : punctuationStyle === "simple"
+              ? "Use simple ASCII punctuation only (straight quotes, hyphen, three dots)."
+              : null;
 
     const toneGuide =
-      opts.tone === "neutral"
+      tone === "neutral"
         ? "Keep tone neutral."
-        : `Target tone: ${opts.tone}.`;
+        : tone
+          ? `Target tone: ${tone}.`
+          : null;
 
     const spellingGuide =
-      opts.spellingVariant === "unchanged"
-        ? "Keep the original language and regional spelling conventions; do not change dialect and do not translate."
-        : opts.spellingVariant === "en-US"
-          ? "Keep the original language; do not translate. If the text is English, standardize spelling to American English (US) conventions; otherwise, do not alter regional spelling."
-          : "Keep the original language; do not translate. If the text is English, standardize spelling to British English (UK) conventions; otherwise, do not alter regional spelling.";
+      spellingVariant === "unchanged"
+        ? "Leave spelling conventions exactly as written, as long as it is correct somewhere."
+        : spellingVariant === "en-US"
+          ? "Standardize spelling to American English conventions."
+          : spellingVariant === "en-GB"
+            ? "Standardize spelling to British English conventions."
+            : null;
 
     const unitsGuide =
-      opts.units === "metric"
+      units === "metric"
         ? "Convert measurement units to SI/metric, updating numbers and unit labels. Keep the original language and regional spelling; do not change dialect or translate."
-        : opts.units === "imperial"
+        : units === "imperial"
           ? "Convert measurement units to Imperial/US customary, updating numbers and unit labels. Keep the original language and regional spelling; do not change dialect or translate."
-          : opts.units === "auto"
+          : units === "auto"
             ? "Use a consistent unit system based on context; avoid mixing systems. Keep the original language and regional spelling; do not change dialect or translate."
-            : "Preserve the original measurement units.";
+            : units === "unchanged"
+              ? "Preserve the original measurement units."
+              : null;
 
     const emitReady = async () => {
       // Emit in order as far as we can
@@ -584,21 +596,25 @@ app.post("/api/fix-stream", async (req, res) => {
       while (inFlight < CONFIG.OLLAMA_CONCURRENCY && nextToStart < total) {
         const i = nextToStart++;
         const para = paragraphs[i].trim();
-        const prompt = `
-You are a grammar correction assistant.
-- Keep the original meaning and style.
-- ${spellingGuide}
-- ${toneGuide}
-- ${strictGuide}
-- ${punctuationGuide}
-- ${unitsGuide}
-- If you see html elements, leave them as they are.
-- Do NOT include explanations, commentary, quotes around the output, or extra text.
-- Only output the corrected paragraph.
+        const bulletLines = [
+          "Keep the original meaning and style.",
+        ];
+        if (spellingGuide) bulletLines.push(spellingGuide);
+        if (toneGuide) bulletLines.push(toneGuide);
+        if (strictGuide) bulletLines.push(strictGuide);
+        if (punctuationGuide) bulletLines.push(punctuationGuide);
+        if (unitsGuide) bulletLines.push(unitsGuide);
+        bulletLines.push("If you see html elements, leave them as they are.");
+        bulletLines.push("Do NOT include explanations, commentary, quotes around the output, or extra text.");
+        bulletLines.push("Only output the corrected paragraph.");
 
-Paragraph:
-${para}
-`.trim();
+        const prompt = [
+          "You are a grammar correction assistant.",
+          ...bulletLines.map((line) => `- ${line}`),
+          "",
+          "Paragraph:",
+          para,
+        ].join("\n");
 
         inFlight++;
         runOllama(usedModel, prompt)

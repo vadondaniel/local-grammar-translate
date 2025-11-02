@@ -41,7 +41,12 @@ const Settings: React.FC<SettingsProps> = ({ open, onClose, onSaved, initialTab 
   const [strictness, setStrictness] = useState<string>("balanced");
   const [punctuationStyle, setPunctuationStyle] = useState<string>("simple");
   const [units, setUnits] = useState<string>("unchanged");
-  const [spellingVariant, setSpellingVariant] = useState<string>("en-US");
+  const [spellingVariant, setSpellingVariant] = useState<string>("unchanged");
+  const [toneEnabled, setToneEnabled] = useState<boolean>(true);
+  const [strictnessEnabled, setStrictnessEnabled] = useState<boolean>(true);
+  const [punctuationEnabled, setPunctuationEnabled] = useState<boolean>(true);
+  const [unitsEnabled, setUnitsEnabled] = useState<boolean>(true);
+  const [spellingEnabled, setSpellingEnabled] = useState<boolean>(false);
   const [translatorSource, setTranslatorSource] = useState<TranslatorSourceLanguage>("auto");
   const [translatorTarget, setTranslatorTarget] = useState<TranslatorTargetLanguage>("english");
   const [translatorDefaultModel, setTranslatorDefaultModel] = useState<string>(DEFAULT_MODEL_ID);
@@ -90,6 +95,16 @@ const Settings: React.FC<SettingsProps> = ({ open, onClose, onSaved, initialTab 
         if (savedUnits) setUnits(savedUnits);
         const savedSpelling = localStorage.getItem("spellingVariant");
         if (savedSpelling) setSpellingVariant(savedSpelling);
+        const savedToneEnabled = localStorage.getItem("grammarToneEnabled");
+        if (savedToneEnabled != null) setToneEnabled(savedToneEnabled !== "false");
+        const savedStrictnessEnabled = localStorage.getItem("grammarStrictnessEnabled");
+        if (savedStrictnessEnabled != null) setStrictnessEnabled(savedStrictnessEnabled !== "false");
+        const savedPunctEnabled = localStorage.getItem("grammarPunctuationEnabled");
+        if (savedPunctEnabled != null) setPunctuationEnabled(savedPunctEnabled !== "false");
+        const savedUnitsEnabled = localStorage.getItem("grammarUnitsEnabled");
+        if (savedUnitsEnabled != null) setUnitsEnabled(savedUnitsEnabled !== "false");
+        const savedSpellingEnabled = localStorage.getItem("grammarSpellingEnabled");
+        if (savedSpellingEnabled != null) setSpellingEnabled(savedSpellingEnabled !== "false");
         const savedSource = localStorage.getItem(TRANSLATOR_STORAGE_KEYS.translatorSource) as TranslatorSourceLanguage | null;
         if (savedSource && SOURCE_LANGUAGE_OPTIONS.some((opt) => opt.value === savedSource)) {
           setTranslatorSource(savedSource);
@@ -151,6 +166,11 @@ const Settings: React.FC<SettingsProps> = ({ open, onClose, onSaved, initialTab 
           localStorage.setItem("punctuationStyle", punctuationStyle);
           localStorage.setItem("unitsPreference", units);
           localStorage.setItem("spellingVariant", spellingVariant);
+          localStorage.setItem("grammarToneEnabled", toneEnabled ? "true" : "false");
+          localStorage.setItem("grammarStrictnessEnabled", strictnessEnabled ? "true" : "false");
+          localStorage.setItem("grammarPunctuationEnabled", punctuationEnabled ? "true" : "false");
+          localStorage.setItem("grammarUnitsEnabled", unitsEnabled ? "true" : "false");
+          localStorage.setItem("grammarSpellingEnabled", spellingEnabled ? "true" : "false");
           const normalizedSource = translatorSource;
           const normalizedTarget = translatorTarget;
           const normalizedModel = normalizeModelId(translatorDefaultModel);
@@ -392,50 +412,125 @@ const Settings: React.FC<SettingsProps> = ({ open, onClose, onSaved, initialTab 
                   ))}
                 </select>
               </label>
-              <label className="form-row">
-                <span>Tone</span>
-                <select value={tone} onChange={(e) => setTone(e.target.value)}>
+              <div className="form-row">
+                <div className="form-row-heading">
+                  <label htmlFor="grammar-tone-select">Tone</label>
+                  <label className="option-toggle">
+                    <input
+                      type="checkbox"
+                      checked={toneEnabled}
+                      onChange={(e) => setToneEnabled(e.target.checked)}
+                    />
+                    <span>Include in prompt</span>
+                  </label>
+                </div>
+                <select
+                  id="grammar-tone-select"
+                  value={tone}
+                  onChange={(e) => setTone(e.target.value)}
+                  disabled={!toneEnabled}
+                >
                   <option value="neutral">Neutral</option>
                   <option value="formal">Formal</option>
                   <option value="friendly">Friendly</option>
                   <option value="academic">Academic</option>
                   <option value="technical">Technical</option>
                 </select>
-              </label>
-              <label className="form-row">
-                <span>Strictness</span>
-                <select value={strictness} onChange={(e) => setStrictness(e.target.value)}>
+              </div>
+              <div className="form-row">
+                <div className="form-row-heading">
+                  <label htmlFor="grammar-strictness-select">Strictness</label>
+                  <label className="option-toggle">
+                    <input
+                      type="checkbox"
+                      checked={strictnessEnabled}
+                      onChange={(e) => setStrictnessEnabled(e.target.checked)}
+                    />
+                    <span>Include in prompt</span>
+                  </label>
+                </div>
+                <select
+                  id="grammar-strictness-select"
+                  value={strictness}
+                  onChange={(e) => setStrictness(e.target.value)}
+                  disabled={!strictnessEnabled}
+                >
                   <option value="lenient">Lenient</option>
                   <option value="balanced">Balanced</option>
                   <option value="strict">Strict</option>
                 </select>
-              </label>
-              <label className="form-row">
-                <span>Punctuation Style</span>
-                <select value={punctuationStyle} onChange={(e) => setPunctuationStyle(e.target.value)}>
+              </div>
+              <div className="form-row">
+                <div className="form-row-heading">
+                  <label htmlFor="grammar-punctuation-select">Punctuation Style</label>
+                  <label className="option-toggle">
+                    <input
+                      type="checkbox"
+                      checked={punctuationEnabled}
+                      onChange={(e) => setPunctuationEnabled(e.target.checked)}
+                    />
+                    <span>Include in prompt</span>
+                  </label>
+                </div>
+                <select
+                  id="grammar-punctuation-select"
+                  value={punctuationStyle}
+                  onChange={(e) => setPunctuationStyle(e.target.value)}
+                  disabled={!punctuationEnabled}
+                >
                   <option value="unchanged">Unchanged</option>
                   <option value="auto">Auto</option>
-                  <option value="simple">Simple ASCII (" ' - ...)</option>
-                  <option value="smart">Typographic (“ ” ‘ ’ – — …)</option>
+                  <option value="simple">Simple ASCII (straight quotes, hyphen, three dots)</option>
+                  <option value="smart">Typographic (curly quotes, dashes, ellipsis)</option>
                 </select>
-              </label>
-              <label className="form-row">
-                <span>Units</span>
-                <select value={units} onChange={(e) => setUnits(e.target.value)}>
+              </div>
+              <div className="form-row">
+                <div className="form-row-heading">
+                  <label htmlFor="grammar-units-select">Units</label>
+                  <label className="option-toggle">
+                    <input
+                      type="checkbox"
+                      checked={unitsEnabled}
+                      onChange={(e) => setUnitsEnabled(e.target.checked)}
+                    />
+                    <span>Include in prompt</span>
+                  </label>
+                </div>
+                <select
+                  id="grammar-units-select"
+                  value={units}
+                  onChange={(e) => setUnits(e.target.value)}
+                  disabled={!unitsEnabled}
+                >
                   <option value="unchanged">Unchanged</option>
                   <option value="metric">Metric (SI)</option>
                   <option value="imperial">Imperial/US</option>
                   <option value="auto">Auto</option>
                 </select>
-              </label>
-              <label className="form-row">
-                <span>Spelling (English)</span>
-                <select value={spellingVariant} onChange={(e) => setSpellingVariant(e.target.value)}>
+              </div>
+              <div className="form-row">
+                <div className="form-row-heading">
+                  <label htmlFor="grammar-spelling-select">Spelling (English)</label>
+                  <label className="option-toggle">
+                    <input
+                      type="checkbox"
+                      checked={spellingEnabled}
+                      onChange={(e) => setSpellingEnabled(e.target.checked)}
+                    />
+                    <span>Include in prompt</span>
+                  </label>
+                </div>
+                <select
+                  id="grammar-spelling-select"
+                  value={spellingVariant}
+                  onChange={(e) => setSpellingVariant(e.target.value)}
+                  disabled={!spellingEnabled}
+                >
                   <option value="unchanged">Unchanged</option>
                   <option value="en-US">English (US)</option>
                   <option value="en-GB">English (UK)</option>
                 </select>
-              </label>
+              </div>
               <div style={{ gridColumn: "1 / -1", color: "#6b7280", fontSize: "0.9rem" }}>
                 These preferences are applied when fixing text and are remembered on refresh.
               </div>
