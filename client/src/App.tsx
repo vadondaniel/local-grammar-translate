@@ -192,6 +192,7 @@ function App() {
       let maxParagraphs = DEFAULT_TRANSLATOR_MAX_PARAGRAPHS;
       let maxChars = DEFAULT_TRANSLATOR_MAX_CHARS;
       let punctuationStyle: TranslatorPunctuationStyle = "unchanged";
+      let punctuationEnabled = true;
       try {
         if (typeof window !== "undefined") {
           const storedParas = Number(localStorage.getItem(TRANSLATOR_STORAGE_KEYS.translatorMaxParagraphs));
@@ -208,17 +209,26 @@ function App() {
           if (storedPunctuation && TRANSLATOR_PUNCT_VALUES.includes(storedPunctuation)) {
             punctuationStyle = storedPunctuation;
           }
+          const storedPunctuationEnabled = localStorage.getItem(
+            TRANSLATOR_STORAGE_KEYS.translatorPunctuationEnabled,
+          );
+          if (storedPunctuationEnabled != null) {
+            punctuationEnabled = storedPunctuationEnabled !== "false";
+          }
         }
       } catch {}
-      payload.options = {
+      const translatorOptions: Record<string, unknown> = {
         sourceLang,
         targetLang,
-        punctuationStyle,
         chunking: {
           maxParagraphs,
           maxChars,
         },
       };
+      if (punctuationEnabled) {
+        translatorOptions.punctuationStyle = punctuationStyle;
+      }
+      payload.options = translatorOptions;
     }
 
     try {

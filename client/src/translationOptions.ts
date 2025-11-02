@@ -33,4 +33,5 @@ export const STORAGE_KEYS = {
   translatorMaxChars: "translatorMaxChars",
   translatorDefaultModel: "translatorDefaultModel",
   translatorPunctuationStyle: "translatorPunctuationStyle",
+  translatorPunctuationEnabled: "translatorPunctuationEnabled",
 };

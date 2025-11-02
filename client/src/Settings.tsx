@@ -53,6 +53,7 @@ const Settings: React.FC<SettingsProps> = ({ open, onClose, onSaved, initialTab 
   const [translatorPunctuation, setTranslatorPunctuation] = useState<TranslatorPunctuationStyle>("unchanged");
   const [translatorMaxParagraphs, setTranslatorMaxParagraphs] = useState<number>(DEFAULT_TRANSLATOR_MAX_PARAGRAPHS);
   const [translatorMaxChars, setTranslatorMaxChars] = useState<number>(DEFAULT_TRANSLATOR_MAX_CHARS);
+  const [translatorPunctuationEnabled, setTranslatorPunctuationEnabled] = useState<boolean>(true);
 
   useEffect(() => {
     if (open) {
@@ -125,6 +126,12 @@ const Settings: React.FC<SettingsProps> = ({ open, onClose, onSaved, initialTab 
         ) {
           setTranslatorPunctuation(savedTranslatorPunctuation);
         }
+        const savedTranslatorPunctuationEnabled = localStorage.getItem(
+          TRANSLATOR_STORAGE_KEYS.translatorPunctuationEnabled,
+        );
+        if (savedTranslatorPunctuationEnabled != null) {
+          setTranslatorPunctuationEnabled(savedTranslatorPunctuationEnabled !== "false");
+        }
         const savedMaxParas = Number(localStorage.getItem(TRANSLATOR_STORAGE_KEYS.translatorMaxParagraphs));
         if (Number.isFinite(savedMaxParas) && savedMaxParas > 0) {
           setTranslatorMaxParagraphs(Math.max(1, Math.floor(savedMaxParas)));
@@ -192,6 +199,10 @@ const Settings: React.FC<SettingsProps> = ({ open, onClose, onSaved, initialTab 
           localStorage.setItem(TRANSLATOR_STORAGE_KEYS.translatorTarget, normalizedTarget);
           localStorage.setItem(TRANSLATOR_STORAGE_KEYS.translatorDefaultModel, normalizedModel);
           localStorage.setItem(TRANSLATOR_STORAGE_KEYS.translatorPunctuationStyle, normalizedPunctuation);
+          localStorage.setItem(
+            TRANSLATOR_STORAGE_KEYS.translatorPunctuationEnabled,
+            translatorPunctuationEnabled ? "true" : "false",
+          );
           localStorage.setItem(TRANSLATOR_STORAGE_KEYS.translatorMaxParagraphs, String(normalizedMaxParas));
           localStorage.setItem(TRANSLATOR_STORAGE_KEYS.translatorMaxChars, String(normalizedMaxChars));
         }
@@ -384,16 +395,31 @@ const Settings: React.FC<SettingsProps> = ({ open, onClose, onSaved, initialTab 
                   onChange={(e) => setTranslatorMaxChars(Math.max(0, Number(e.target.value) || 0))}
                 />
               </label>
-              <label className="form-row">
-                <span>Punctuation Style</span>
-                <select value={translatorPunctuation} onChange={(e) => setTranslatorPunctuation(e.target.value as TranslatorPunctuationStyle)}>
+              <div className="form-row">
+                <div className="form-row-heading">
+                  <label htmlFor="translator-punctuation-select">Punctuation Style</label>
+                  <label className="option-toggle">
+                    <input
+                      type="checkbox"
+                      checked={translatorPunctuationEnabled}
+                      onChange={(e) => setTranslatorPunctuationEnabled(e.target.checked)}
+                    />
+                    <span>Include in prompt</span>
+                  </label>
+                </div>
+                <select
+                  id="translator-punctuation-select"
+                  value={translatorPunctuation}
+                  onChange={(e) => setTranslatorPunctuation(e.target.value as TranslatorPunctuationStyle)}
+                  disabled={!translatorPunctuationEnabled}
+                >
                   {TRANSLATOR_PUNCTUATION_OPTIONS.map((opt) => (
                     <option key={opt.value} value={opt.value}>
                       {opt.label}
                     </option>
                   ))}
                 </select>
-              </label>
+              </div>
               <div style={{ gridColumn: "1 / -1", color: "#6b7280", fontSize: "0.9rem" }}>
                 These defaults apply when using translator mode and determine model choice, punctuation handling, and chunk size.
               </div>

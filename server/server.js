@@ -280,20 +280,27 @@ function buildTranslationPrompt(chunk, sourceLang, targetLang, punctuationStyle)
     "You are a professional translator.",
     describeSourceLanguage(sourceLang),
     describeTargetLanguage(targetLang),
-    describePunctuationPreference(punctuationStyle),
+  ];
+  if (punctuationStyle) {
+    headerLines.push(describePunctuationPreference(punctuationStyle));
+  }
+  headerLines.push(
     chunk.length > 1
       ? "Use the combined context of all paragraphs to keep terminology and tone consistent."
       : "Translate the paragraph accurately while keeping the original intent.",
-  ];
+  );
 
-  const requirements = `
-Requirements:
-- Return valid JSON with the structure {"translations":[{"index":<index>,"text":"..."}]}.
-- Use the same numeric indices that are provided with each paragraph below.
-- Provide only the JSON; do not add explanations, markdown, comments, or extra keys.
-- Respect the punctuation guidance and keep it consistent throughout the translation.
-- Preserve sentence boundaries and formatting where possible.
-  `.trim();
+  const requirementLines = [
+    `- Return valid JSON with the structure {"translations":[{"index":<index>,"text":"..."}]}.`,
+    "- Use the same numeric indices that are provided with each paragraph below.",
+    "- Provide only the JSON; do not add explanations, markdown, comments, or extra keys.",
+  ];
+  if (punctuationStyle) {
+    requirementLines.push("- Respect the punctuation guidance and keep it consistent throughout the translation.");
+  }
+  requirementLines.push("- Preserve sentence boundaries and formatting where possible.");
+
+  const requirements = `Requirements:\n${requirementLines.join("\n")}`;
 
   const paragraphsBlock = chunk
     .map((entry) => `[${entry.index}]: ${entry.text}`)
@@ -684,7 +691,9 @@ app.post("/api/translate-stream", async (req, res) => {
   const rawOptions = body.options || {};
   const sourceLang = normalizeTranslatorSource(rawOptions.sourceLang);
   const targetLang = normalizeTranslatorTarget(rawOptions.targetLang);
-  const punctuationStyle = normalizeTranslatorPunctuation(rawOptions.punctuationStyle);
+  const punctuationStyle = Object.prototype.hasOwnProperty.call(rawOptions, "punctuationStyle")
+    ? normalizeTranslatorPunctuation(rawOptions.punctuationStyle)
+    : null;
   const chunkOpts = normalizeChunkOptions(rawOptions.chunking);
 
   const items = paragraphs.map((para, index) => ({
