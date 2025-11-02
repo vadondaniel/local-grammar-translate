@@ -75,6 +75,8 @@ Example `server/config.json` (one ships with the project):
 
 Set `OLLAMA_AUTOSTART` to `false` if you prefer to run `ollama serve` yourself. The server checks connectivity before every request and streams paragraph-level updates back to the client.
 
+Project-wide options live in `project.config.json`. Use it to change the Express server port, Vite dev server port, and the available Ollama models (each entry has an `id` and human-friendly `name`). Both the server and client read this file on startup, so restart your dev processes after editing it.
+
 ## Building for Production
 
 ```bash
@@ -85,9 +87,10 @@ The build output appears in `client/dist`. Serve those static files with your pr
 
 ## Project Layout
 
-- `client/` – React + Vite front end (TypeScript)
-- `server/` – Express backend and Ollama integration
-- `README.md` – Project overview and usage guide
+- `client/` - React + Vite front end (TypeScript)
+- `server/` - Express backend and Ollama integration
+- `project.config.json` - Shared ports and model list used by both halves
+- `README.md` - Project overview and usage guide
 
 ## Next Steps
 

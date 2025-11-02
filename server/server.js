@@ -5,12 +5,91 @@ const net = require("net");
 const fs = require("fs");
 const path = require("path");
 
+const CONFIG_PATH = path.join(__dirname, "config.json");
+const PROJECT_CONFIG_PATH = path.join(__dirname, "..", "project.config.json");
+
+const PROJECT_DEFAULTS = {
+  serverPort: 3001,
+  clientPort: 5173,
+  models: [
+    { id: "gemma3", name: "Gemma 3 4B" },
+    { id: "deepseek-v3.1:671b-cloud", name: "DeepSeek 671B (Cloud)" },
+    { id: "gpt-oss:120b-cloud", name: "GPT-OSS 120B (Cloud)" },
+    { id: "llama3.2", name: "Llama 3.2 3B" },
+    { id: "llama2-uncensored", name: "Llama 2 7B" },
+    { id: "deepseek-llm", name: "DeepSeek 7B" },
+    { id: "mistral", name: "Mistral 7B" },
+    { id: "thinkverse/towerinstruct:latest", name: "TowerInstruct 7B" },
+  ],
+};
+
+function normalizeProjectConfig(raw) {
+  const cfg = {
+    serverPort: PROJECT_DEFAULTS.serverPort,
+    clientPort: PROJECT_DEFAULTS.clientPort,
+    models: PROJECT_DEFAULTS.models.map((m) => ({ ...m })),
+  };
+
+  if (raw && typeof raw === "object") {
+    const rawServerPort = Number(raw.serverPort);
+    if (Number.isInteger(rawServerPort) && rawServerPort > 0 && rawServerPort < 65536) {
+      cfg.serverPort = rawServerPort;
+    }
+
+    const rawClientPort = Number(raw.clientPort);
+    if (Number.isInteger(rawClientPort) && rawClientPort > 0 && rawClientPort < 65536) {
+      cfg.clientPort = rawClientPort;
+    }
+
+    if (Array.isArray(raw.models)) {
+      const seen = new Set();
+      const sanitized = [];
+      for (const entry of raw.models) {
+        if (!entry || typeof entry !== "object") continue;
+        const id = typeof entry.id === "string" ? entry.id.trim() : "";
+        if (!id || seen.has(id)) continue;
+        const name = typeof entry.name === "string" && entry.name.trim().length > 0 ? entry.name.trim() : id;
+        sanitized.push({ id, name });
+        seen.add(id);
+      }
+      if (sanitized.length > 0) {
+        cfg.models = sanitized;
+      }
+    }
+  }
+
+  return cfg;
+}
+
+function loadProjectConfig() {
+  let fileConfig = {};
+  try {
+    if (fs.existsSync(PROJECT_CONFIG_PATH)) {
+      const txt = fs.readFileSync(PROJECT_CONFIG_PATH, "utf-8");
+      fileConfig = JSON.parse(txt);
+    }
+  } catch {
+    fileConfig = {};
+  }
+
+  const envOverrides = {};
+  const envServerPort = process.env.SERVER_PORT || process.env.APP_SERVER_PORT || process.env.PORT;
+  const envClientPort = process.env.CLIENT_PORT || process.env.APP_CLIENT_PORT;
+  if (envServerPort != null) envOverrides.serverPort = Number(envServerPort);
+  if (envClientPort != null) envOverrides.clientPort = Number(envClientPort);
+
+  return normalizeProjectConfig({ ...fileConfig, ...envOverrides });
+}
+
+const PROJECT_CONFIG = loadProjectConfig();
+const SERVER_PORT = PROJECT_CONFIG.serverPort;
+const CLIENT_PORT = PROJECT_CONFIG.clientPort;
+const MODEL_OPTIONS = PROJECT_CONFIG.models.map((m) => ({ ...m }));
+const DEFAULT_MODEL = MODEL_OPTIONS[0]?.id || "gemma3";
+
 const app = express();
 app.use(cors());
 app.use(express.json());
-
-const DEFAULT_MODEL = "gemma3";
-const CONFIG_PATH = path.join(__dirname, "config.json");
 
 function parseBool(val, fallback = false) {
   if (typeof val === "boolean") return val;
@@ -364,7 +443,16 @@ app.get("/api/health", async (req, res) => {
 
 app.get("/api/config", (req, res) => {
   try {
-    return res.json({ ok: true, config: normalizeConfig(CONFIG) });
+    return res.json({
+      ok: true,
+      config: normalizeConfig(CONFIG),
+      project: {
+        serverPort: SERVER_PORT,
+        clientPort: CLIENT_PORT,
+        defaultModel: DEFAULT_MODEL,
+        models: MODEL_OPTIONS.map((m) => ({ ...m })),
+      },
+    });
   } catch (e) {
     return res.status(500).json({ ok: false, error: "config_read_error" });
   }
@@ -383,7 +471,17 @@ app.post("/api/config", (req, res) => {
         return res.status(500).json({ ok: false, error: "config_write_error" });
       }
     }
-    return res.json({ ok: true, config: CONFIG, persisted: !!persist });
+    return res.json({
+      ok: true,
+      config: normalizeConfig(CONFIG),
+      persisted: !!persist,
+      project: {
+        serverPort: SERVER_PORT,
+        clientPort: CLIENT_PORT,
+        defaultModel: DEFAULT_MODEL,
+        models: MODEL_OPTIONS.map((m) => ({ ...m })),
+      },
+    });
   } catch (e) {
     return res.status(400).json({ ok: false, error: "config_update_error" });
   }
@@ -659,6 +757,6 @@ app.post("/api/translate-stream", async (req, res) => {
 });
 
 
-app.listen(3001, () =>
-  console.log("✅ Server running on http://localhost:3001")
+app.listen(SERVER_PORT, () =>
+  console.log(`✅ Server running on http://localhost:${SERVER_PORT}`)
 );

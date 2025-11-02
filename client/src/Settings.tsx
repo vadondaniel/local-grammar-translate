@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { API_BASE_URL, DEFAULT_MODEL_ID, MODEL_OPTIONS, normalizeModelId } from "./projectConfig";
 import type {
   TranslatorPunctuationStyle,
   TranslatorSourceLanguage,
@@ -35,7 +36,7 @@ const Settings: React.FC<SettingsProps> = ({ open, onClose, onSaved, initialTab 
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"grammar" | "translator" | "server">(initialTab);
-  const [defaultModel, setDefaultModel] = useState<string>("gemma3");
+  const [defaultModel, setDefaultModel] = useState<string>(DEFAULT_MODEL_ID);
   const [tone, setTone] = useState<string>("neutral");
   const [strictness, setStrictness] = useState<string>("balanced");
   const [punctuationStyle, setPunctuationStyle] = useState<string>("simple");
@@ -43,7 +44,7 @@ const Settings: React.FC<SettingsProps> = ({ open, onClose, onSaved, initialTab 
   const [spellingVariant, setSpellingVariant] = useState<string>("en-US");
   const [translatorSource, setTranslatorSource] = useState<TranslatorSourceLanguage>("auto");
   const [translatorTarget, setTranslatorTarget] = useState<TranslatorTargetLanguage>("english");
-  const [translatorDefaultModel, setTranslatorDefaultModel] = useState<string>("gemma3");
+  const [translatorDefaultModel, setTranslatorDefaultModel] = useState<string>(DEFAULT_MODEL_ID);
   const [translatorPunctuation, setTranslatorPunctuation] = useState<TranslatorPunctuationStyle>("unchanged");
   const [translatorMaxParagraphs, setTranslatorMaxParagraphs] = useState<number>(DEFAULT_TRANSLATOR_MAX_PARAGRAPHS);
   const [translatorMaxChars, setTranslatorMaxChars] = useState<number>(DEFAULT_TRANSLATOR_MAX_CHARS);
@@ -59,7 +60,7 @@ const Settings: React.FC<SettingsProps> = ({ open, onClose, onSaved, initialTab 
     let active = true;
     (async () => {
       try {
-        const res = await fetch("http://localhost:3001/api/config");
+        const res = await fetch(`${API_BASE_URL}/config`);
         const data = await res.json();
         if (!active) return;
         if (res.ok && data?.ok && data?.config) {
@@ -80,7 +81,8 @@ const Settings: React.FC<SettingsProps> = ({ open, onClose, onSaved, initialTab 
         const savedTone = localStorage.getItem("grammarTone");
         const savedStrictness = localStorage.getItem("grammarStrictness");
         const savedPunct = localStorage.getItem("punctuationStyle");
-        if (savedModel) setDefaultModel(savedModel);
+        if (savedModel) setDefaultModel(normalizeModelId(savedModel));
+        else setDefaultModel(DEFAULT_MODEL_ID);
         if (savedTone) setTone(savedTone);
         if (savedStrictness) setStrictness(savedStrictness);
         if (savedPunct) setPunctuationStyle(savedPunct);
@@ -97,7 +99,8 @@ const Settings: React.FC<SettingsProps> = ({ open, onClose, onSaved, initialTab 
           setTranslatorTarget(savedTarget);
         }
         const savedTranslatorModel = localStorage.getItem(TRANSLATOR_STORAGE_KEYS.translatorDefaultModel);
-        if (savedTranslatorModel) setTranslatorDefaultModel(savedTranslatorModel);
+        if (savedTranslatorModel) setTranslatorDefaultModel(normalizeModelId(savedTranslatorModel));
+        else setTranslatorDefaultModel(DEFAULT_MODEL_ID);
         const savedTranslatorPunctuation = localStorage.getItem(
           TRANSLATOR_STORAGE_KEYS.translatorPunctuationStyle,
         ) as TranslatorPunctuationStyle | null;
@@ -140,7 +143,9 @@ const Settings: React.FC<SettingsProps> = ({ open, onClose, onSaved, initialTab 
       // Always persist grammar default locally
       try {
         if (typeof window !== "undefined") {
-          localStorage.setItem("defaultModel", defaultModel);
+          const normalizedGrammarModel = normalizeModelId(defaultModel);
+          setDefaultModel(normalizedGrammarModel);
+          localStorage.setItem("defaultModel", normalizedGrammarModel);
           localStorage.setItem("grammarTone", tone);
           localStorage.setItem("grammarStrictness", strictness);
           localStorage.setItem("punctuationStyle", punctuationStyle);
@@ -148,7 +153,8 @@ const Settings: React.FC<SettingsProps> = ({ open, onClose, onSaved, initialTab 
           localStorage.setItem("spellingVariant", spellingVariant);
           const normalizedSource = translatorSource;
           const normalizedTarget = translatorTarget;
-          const normalizedModel = translatorDefaultModel;
+          const normalizedModel = normalizeModelId(translatorDefaultModel);
+          setTranslatorDefaultModel(normalizedModel);
           const normalizedPunctuation = translatorPunctuation;
           const normalizedMaxParas = Math.max(
             1,
@@ -172,7 +178,7 @@ const Settings: React.FC<SettingsProps> = ({ open, onClose, onSaved, initialTab 
       } catch {}
 
       if (cfg) {
-        const res = await fetch("http://localhost:3001/api/config", {
+        const res = await fetch(`${API_BASE_URL}/config`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ ...cfg, persist }),
@@ -309,15 +315,15 @@ const Settings: React.FC<SettingsProps> = ({ open, onClose, onSaved, initialTab 
             <div className="modal-grid" role="tabpanel">
               <label className="form-row" style={{ gridColumn: "1 / -1" }}>
                 <span>Default Model</span>
-                <select value={translatorDefaultModel} onChange={(e) => setTranslatorDefaultModel(e.target.value)}>
-                  <option value="gemma3">Gemma 3 4B</option>
-                  <option value="deepseek-v3.1:671b-cloud">DeepSeek 671B (Cloud)</option>
-                  <option value="gpt-oss:120b-cloud">GPT-OSS 120B (Cloud)</option>
-                  <option value="llama3.2">Llama 3.2 3B</option>
-                  <option value="llama2-uncensored">Llama 2 7B</option>
-                  <option value="deepseek-llm">DeepSeek 7B</option>
-                  <option value="mistral">Mistral 7B</option>
-                  <option value="thinkverse/towerinstruct:latest">TowerInstruct 7B</option>
+                <select
+                  value={translatorDefaultModel}
+                  onChange={(e) => setTranslatorDefaultModel(normalizeModelId(e.target.value))}
+                >
+                  {MODEL_OPTIONS.map((opt) => (
+                    <option key={opt.id} value={opt.id}>
+                      {opt.name}
+                    </option>
+                  ))}
                 </select>
               </label>
               <label className="form-row">
@@ -378,15 +384,12 @@ const Settings: React.FC<SettingsProps> = ({ open, onClose, onSaved, initialTab 
             <div className="modal-grid" role="tabpanel">
               <label className="form-row" style={{ gridColumn: "1 / -1" }}>
                 <span>Default Model</span>
-                <select value={defaultModel} onChange={(e) => setDefaultModel(e.target.value)}>
-                  <option value="gemma3">Gemma 3 4B</option>
-                  <option value="deepseek-v3.1:671b-cloud">DeepSeek 671B (Cloud)</option>
-                  <option value="gpt-oss:120b-cloud">GPT-OSS 120B (Cloud)</option>
-                  <option value="llama3.2">Llama 3.2 3B</option>
-                  <option value="llama2-uncensored">Llama 2 7B</option>
-                  <option value="deepseek-llm">DeepSeek 7B</option>
-                  <option value="mistral">Mistral 7B</option>
-                  <option value="thinkverse/towerinstruct:latest">TowerInstruct 7B</option>
+                <select value={defaultModel} onChange={(e) => setDefaultModel(normalizeModelId(e.target.value))}>
+                  {MODEL_OPTIONS.map((opt) => (
+                    <option key={opt.id} value={opt.id}>
+                      {opt.name}
+                    </option>
+                  ))}
                 </select>
               </label>
               <label className="form-row">

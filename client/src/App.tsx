@@ -2,6 +2,13 @@ import { useEffect, useRef, useState } from "react";
 import "./App.css";
 import InlineDiff from "./InlineDiff";
 import Settings from "./Settings.tsx";
+import {
+  API_BASE_URL,
+  DEFAULT_MODEL_ID,
+  MODEL_OPTIONS,
+  normalizeModelId,
+  isKnownModel,
+} from "./projectConfig";
 import type {
   TranslatorSourceLanguage,
   TranslatorTargetLanguage,
@@ -34,16 +41,39 @@ function App() {
       if (typeof window !== "undefined") {
         const storedMode = localStorage.getItem(TRANSLATOR_STORAGE_KEYS.mode);
         if (storedMode === "translator") {
-          return (
-            localStorage.getItem(TRANSLATOR_STORAGE_KEYS.translatorDefaultModel) ||
-            localStorage.getItem("defaultModel") ||
-            "gemma3"
-          );
+          const translatorModel = localStorage.getItem(TRANSLATOR_STORAGE_KEYS.translatorDefaultModel);
+          if (translatorModel && isKnownModel(translatorModel)) {
+            return translatorModel;
+          }
+          const grammarModel = localStorage.getItem("defaultModel");
+          if (grammarModel && isKnownModel(grammarModel)) {
+            return grammarModel;
+          }
+          if (translatorModel) {
+            return normalizeModelId(translatorModel);
+          }
+          if (grammarModel) {
+            return normalizeModelId(grammarModel);
+          }
+        } else {
+          const grammarModel = localStorage.getItem("defaultModel");
+          if (grammarModel && isKnownModel(grammarModel)) {
+            return grammarModel;
+          }
+          const translatorModel = localStorage.getItem(TRANSLATOR_STORAGE_KEYS.translatorDefaultModel);
+          if (translatorModel && isKnownModel(translatorModel)) {
+            return translatorModel;
+          }
+          if (grammarModel) {
+            return normalizeModelId(grammarModel);
+          }
+          if (translatorModel) {
+            return normalizeModelId(translatorModel);
+          }
         }
-        return localStorage.getItem("defaultModel") || "gemma3";
       }
     } catch {}
-    return "gemma3";
+    return DEFAULT_MODEL_ID;
   });
   const [mode, setMode] = useState<Mode>(() => {
     try {
@@ -169,7 +199,7 @@ function App() {
     }
 
     try {
-      const res = await fetch(`http://localhost:3001/api/${endpoint}`, {
+      const res = await fetch(`${API_BASE_URL}/${endpoint}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -257,21 +287,34 @@ function App() {
     } catch {}
   }, [mode]);
 
-  useEffect(() => {
-    try {
-      if (typeof window !== "undefined") {
-        if (mode === "translator") {
-          const storedTranslatorModel = localStorage.getItem(TRANSLATOR_STORAGE_KEYS.translatorDefaultModel);
-          if (storedTranslatorModel) {
-            setModel(storedTranslatorModel);
-            return;
-          }
+useEffect(() => {
+  try {
+    if (typeof window !== "undefined") {
+      const translatorStored = localStorage.getItem(TRANSLATOR_STORAGE_KEYS.translatorDefaultModel);
+      const grammarStored = localStorage.getItem("defaultModel");
+      if (mode === "translator") {
+        if (translatorStored) {
+          setModel(normalizeModelId(translatorStored));
+          return;
         }
-        const storedGrammarModel = localStorage.getItem("defaultModel");
-        if (storedGrammarModel) setModel(storedGrammarModel);
+        if (grammarStored) {
+          setModel(normalizeModelId(grammarStored));
+          return;
+        }
+      } else {
+        if (grammarStored) {
+          setModel(normalizeModelId(grammarStored));
+          return;
+        }
+        if (translatorStored) {
+          setModel(normalizeModelId(translatorStored));
+          return;
+        }
       }
-    } catch {}
-  }, [mode]);
+    }
+  } catch {}
+  setModel((prev) => (isKnownModel(prev) ? prev : DEFAULT_MODEL_ID));
+}, [mode]);
 
   useEffect(() => {
     try {
@@ -295,7 +338,7 @@ function App() {
     let timer: number | null = null;
     const check = async () => {
       try {
-        const res = await fetch("http://localhost:3001/api/health?start=1");
+        const res = await fetch(`${API_BASE_URL}/health?start=1`);
         const data = await res.json();
         if (!active) return;
         if (res.ok && data?.ok) {
@@ -410,19 +453,16 @@ function App() {
         </div>
         <select
           value={model}
-          onChange={(e) => setModel(e.target.value)}
+          onChange={(e) => setModel(normalizeModelId(e.target.value))}
           style={{ width: "155px" }}
           disabled={isProcessing}
           aria-label="Model selection"
         >
-          <option value="gemma3">Gemma 3 4B</option>
-          <option value="deepseek-v3.1:671b-cloud">DeepSeek 671B (Cloud)</option>
-          <option value="gpt-oss:120b-cloud">GPT-OSS 120B (Cloud)</option>
-          <option value="llama3.2">Llama 3.2 3B</option>
-          <option value="llama2-uncensored">Llama 2 7B</option>
-          <option value="deepseek-llm">DeepSeek 7B</option>
-          <option value="mistral">Mistral 7B</option>
-          <option value="thinkverse/towerinstruct:latest">TowerInstruct 7B</option>
+          {MODEL_OPTIONS.map((opt) => (
+            <option key={opt.id} value={opt.id}>
+              {opt.name}
+            </option>
+          ))}
         </select>
 
         {mode === "translator" && (
@@ -479,18 +519,23 @@ function App() {
           setServerReady(false);
           try {
             if (typeof window !== "undefined") {
-              if (mode === "translator") {
-                const storedTranslatorModel = localStorage.getItem(TRANSLATOR_STORAGE_KEYS.translatorDefaultModel);
-                if (storedTranslatorModel) {
-                  setModel(storedTranslatorModel);
-                  return;
-                }
-              } else {
-                const storedGrammarModel = localStorage.getItem("defaultModel");
-                if (storedGrammarModel) {
-                  setModel(storedGrammarModel);
-                  return;
-                }
+              const translatorStored = localStorage.getItem(TRANSLATOR_STORAGE_KEYS.translatorDefaultModel);
+              const grammarStored = localStorage.getItem("defaultModel");
+              if (mode === "translator" && translatorStored) {
+                setModel(normalizeModelId(translatorStored));
+                return;
+              }
+              if (mode === "grammar" && grammarStored) {
+                setModel(normalizeModelId(grammarStored));
+                return;
+              }
+              if (grammarStored) {
+                setModel(normalizeModelId(grammarStored));
+                return;
+              }
+              if (translatorStored) {
+                setModel(normalizeModelId(translatorStored));
+                return;
               }
             }
           } catch {}
