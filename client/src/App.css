@@ -70,6 +70,21 @@ select:focus {
   outline: 2px solid #3b82f6;
 }
 
+select:disabled {
+  background: #e5e7eb;
+  border-color: #d1d5db;
+  color: #6b7280;
+  cursor: not-allowed;
+}
+
+@media (prefers-color-scheme: dark) {
+  select:disabled {
+    background: #1f2937;
+    border-color: #374151;
+    color: #9ca3af;
+  }
+}
+
 /* Textarea */
 textarea {
   width: 100%;
